@@ -299,10 +299,26 @@ ipcMain.handle('vehicles:updateStatus', (_, id, status, latestRecord) => {
 });
 
 ipcMain.handle('records:create', (_, record) => {
+  const initialQualityStatus = (record.disposalDecision === 'quarantine' || record.disposalDecision === 'reject')
+    ? 'pending_review'
+    : null;
+  const initialFollowUps = [];
+  if (initialQualityStatus) {
+    initialFollowUps.push({
+      id: `FU${Date.now()}`,
+      type: 'register',
+      typeLabel: '收货登记',
+      operator: record.receiverName || '值班员',
+      note: `完成收货登记，处置决定：${record.disposalDecisionLabel || record.disposalDecision}`,
+      timestamp: new Date().toISOString()
+    });
+  }
   const newRecord = {
     id: `REC${Date.now()}`,
     ...record,
     review: null,
+    qualityStatus: initialQualityStatus,
+    followUps: initialFollowUps,
     createdAt: new Date().toISOString()
   };
   records.unshift(newRecord);
@@ -334,6 +350,17 @@ ipcMain.handle('records:updateReview', (_, recordId, reviewData) => {
       reviewedAt: new Date().toISOString()
     }
   };
+  if (records[idx].qualityStatus === 'pending_review') {
+    records[idx].qualityStatus = 'under_qc';
+    records[idx].followUps.push({
+      id: `FU${Date.now()}`,
+      type: 'review',
+      typeLabel: '复核通过',
+      operator: reviewData.reviewer || '复核人',
+      note: `复核结论：${reviewData.conclusionLabel || reviewData.conclusion} · 后续：${reviewData.nextActionLabel || reviewData.nextAction}${reviewData.note ? ' · ' + reviewData.note : ''}`,
+      timestamp: new Date().toISOString()
+    });
+  }
   saveRecords();
   syncVehiclesLatestRecord();
   const updatedRecord = records[idx];
@@ -342,6 +369,52 @@ ipcMain.handle('records:updateReview', (_, recordId, reviewData) => {
   detailWindow && detailWindow.webContents.send('record:created', updatedRecord);
   detailWindow && detailWindow.webContents.send('vehicle:updated', vehicles.find(v => v.id === updatedRecord.vehicleId));
   return updatedRecord;
+});
+
+ipcMain.handle('records:updateQualityStatus', (_, recordId, status, statusLabel, operator, note) => {
+  const idx = records.findIndex(r => r.id === recordId);
+  if (idx === -1) return null;
+  records[idx] = {
+    ...records[idx],
+    qualityStatus: status
+  };
+  if (!records[idx].followUps) records[idx].followUps = [];
+  records[idx].followUps.push({
+    id: `FU${Date.now()}`,
+    type: 'status_change',
+    typeLabel: statusLabel || status,
+    operator: operator || '值班员',
+    note: note || `状态变更为：${statusLabel || status}`,
+    timestamp: new Date().toISOString()
+  });
+  saveRecords();
+  syncVehiclesLatestRecord();
+  const updatedRecord = records[idx];
+  mainWindow && mainWindow.webContents.send('vehicles:updated', vehicles);
+  historyWindow && historyWindow.webContents.send('records:updated', records);
+  detailWindow && detailWindow.webContents.send('record:created', updatedRecord);
+  detailWindow && detailWindow.webContents.send('vehicle:updated', vehicles.find(v => v.id === updatedRecord.vehicleId));
+  return updatedRecord;
+});
+
+ipcMain.handle('records:addFollowUp', (_, recordId, followUp) => {
+  const idx = records.findIndex(r => r.id === recordId);
+  if (idx === -1) return null;
+  if (!records[idx].followUps) records[idx].followUps = [];
+  const newFollowUp = {
+    id: `FU${Date.now()}`,
+    ...followUp,
+    timestamp: new Date().toISOString()
+  };
+  records[idx].followUps.push(newFollowUp);
+  saveRecords();
+  syncVehiclesLatestRecord();
+  const updatedRecord = records[idx];
+  mainWindow && mainWindow.webContents.send('vehicles:updated', vehicles);
+  historyWindow && historyWindow.webContents.send('records:updated', records);
+  detailWindow && detailWindow.webContents.send('record:created', updatedRecord);
+  detailWindow && detailWindow.webContents.send('vehicle:updated', vehicles.find(v => v.id === updatedRecord.vehicleId));
+  return newFollowUp;
 });
 
 ipcMain.on('window:openDetail', (_, vehicleId) => {

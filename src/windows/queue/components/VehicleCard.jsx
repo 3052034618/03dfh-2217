@@ -28,6 +28,15 @@ const DISPOSAL_COLORS = {
   reject: 'var(--risk-critical)'
 };
 
+const QUALITY_STATUS = {
+  pending_review: { label: '待复核', color: 'var(--risk-warning)', bg: 'rgba(245, 158, 11, 0.15)' },
+  under_qc: { label: '质检中', color: 'var(--risk-warning)', bg: 'rgba(245, 158, 11, 0.15)' },
+  sampling: { label: '已抽样', color: 'var(--risk-attention)', bg: 'rgba(251, 191, 36, 0.15)' },
+  qc_complete: { label: '质检完成', color: 'var(--accent-blue)', bg: 'rgba(59, 130, 246, 0.15)' },
+  released: { label: '放行入库', color: 'var(--risk-normal)', bg: 'rgba(34, 197, 94, 0.15)' },
+  returned: { label: '已退回', color: 'var(--risk-critical)', bg: 'rgba(239, 68, 68, 0.15)' }
+};
+
 export default function VehicleCard({ vehicle, priority, onViewDetail, onStartReceiving }) {
   const isReceived = vehicle.status === 'received';
 
@@ -243,13 +252,38 @@ export default function VehicleCard({ vehicle, priority, onViewDetail, onStartRe
           }}>
             👷 {vehicle.latestRecord.receiverName || '未记录'} · {new Date(vehicle.latestRecord.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 处置
           </div>
-            {vehicle.latestRecord.review ? (
-            <div style={{ fontSize: 11, color: 'var(--risk-normal)', marginTop: 3 }}>
-              ✓ 已复核 · {vehicle.latestRecord.review.conclusionLabel || vehicle.latestRecord.review.conclusionLabel || '已处理完毕'}
+            {vehicle.latestRecord.qualityStatus && QUALITY_STATUS[vehicle.latestRecord.qualityStatus] && (
+            <div style={{
+              fontSize: 11, marginTop: 4,
+              padding: '2px 8px', borderRadius: 4, display: 'inline-block',
+              color: QUALITY_STATUS[vehicle.latestRecord.qualityStatus].color,
+              background: QUALITY_STATUS[vehicle.latestRecord.qualityStatus].bg,
+              fontWeight: 500
+            }}>
+              📍 {QUALITY_STATUS[vehicle.latestRecord.qualityStatus].label}
             </div>
-          ) : (vehicle.latestRecord.disposalDecision === 'quarantine' || vehicle.latestRecord.disposalDecision === 'reject') && (
+          )}
+            {!vehicle.latestRecord.qualityStatus && vehicle.latestRecord.review ? (
+            <div style={{ fontSize: 11, color: 'var(--risk-normal)', marginTop: 3 }}>
+              ✓ 已复核 · {vehicle.latestRecord.review.conclusionLabel || '已处理完毕'}
+            </div>
+          ) : !vehicle.latestRecord.qualityStatus && (vehicle.latestRecord.disposalDecision === 'quarantine' || vehicle.latestRecord.disposalDecision === 'reject') && (
             <div style={{ fontSize: 11, color: 'var(--risk-warning)', marginTop: 3 }}>
               ⚠ 待复核
+            </div>
+          )}
+            {(vehicle.latestRecord.disposalNotes || vehicle.latestRecord.packageNotes) && (
+            <div style={{
+              marginTop: 6, padding: '6px 10px', borderRadius: 6,
+              background: 'var(--bg-secondary)', fontSize: 11, color: 'var(--text-secondary)',
+              lineHeight: 1.5, maxHeight: 48, overflow: 'hidden'
+            }}>
+              {vehicle.latestRecord.disposalNotes && (
+                <div><span style={{ color: 'var(--text-muted)' }}>处置：</span>{vehicle.latestRecord.disposalNotes}</div>
+              )}
+              {vehicle.latestRecord.packageNotes && (
+                <div style={{ marginTop: 2 }}><span style={{ color: 'var(--text-muted)' }}>包装：</span>{vehicle.latestRecord.packageNotes}</div>
+              )}
             </div>
           )}
           </>

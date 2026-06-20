@@ -212,7 +212,19 @@ const mockAPI = {
   },
   records: {
     create: async (rec) => {
-      const r = { id: 'REC' + Date.now(), review: null, ...rec, createdAt: new Date().toISOString() };
+      const qs = (rec.disposalDecision === 'quarantine' || rec.disposalDecision === 'reject') ? 'pending_review' : null;
+      const fus = [];
+      if (qs) {
+        fus.push({
+          id: 'FU' + Date.now(),
+          type: 'register',
+          typeLabel: '收货登记',
+          operator: rec.receiverName || '值班员',
+          note: `完成收货登记，处置决定：${rec.disposalDecisionLabel || rec.disposalDecision}`,
+          timestamp: new Date().toISOString()
+        });
+      }
+      const r = { id: 'REC' + Date.now(), review: null, qualityStatus: qs, followUps: fus, ...rec, createdAt: new Date().toISOString() };
       mockState.records.unshift(r);
       saveRecords(mockState.records);
       syncVehiclesLatestRecord(mockState.vehicles, mockState.records);
@@ -229,12 +241,56 @@ const mockAPI = {
         ...mockState.records[idx],
         review: { ...reviewData, reviewedAt: new Date().toISOString() }
       };
+      if (mockState.records[idx].qualityStatus === 'pending_review') {
+        mockState.records[idx].qualityStatus = 'under_qc';
+        mockState.records[idx].followUps.push({
+          id: 'FU' + Date.now(),
+          type: 'review',
+          typeLabel: '复核通过',
+          operator: reviewData.reviewer || '复核人',
+          note: `复核结论：${reviewData.conclusionLabel || reviewData.conclusion} · 后续：${reviewData.nextActionLabel || reviewData.nextAction}${reviewData.note ? ' · ' + reviewData.note : ''}`,
+          timestamp: new Date().toISOString()
+        });
+      }
       saveRecords(mockState.records);
       syncVehiclesLatestRecord(mockState.vehicles, mockState.records);
       const updated = mockState.records[idx];
       recordUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(mockState.records))));
       vehicleUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(mockState.vehicles.find(x => x.id === updated.vehicleId)))));
       return updated;
+    },
+    updateQualityStatus: async (recordId, status, statusLabel, operator, note) => {
+      const idx = mockState.records.findIndex(r => r.id === recordId);
+      if (idx === -1) return null;
+      mockState.records[idx] = { ...mockState.records[idx], qualityStatus: status };
+      if (!mockState.records[idx].followUps) mockState.records[idx].followUps = [];
+      mockState.records[idx].followUps.push({
+        id: 'FU' + Date.now(),
+        type: 'status_change',
+        typeLabel: statusLabel || status,
+        operator: operator || '值班员',
+        note: note || `状态变更为：${statusLabel || status}`,
+        timestamp: new Date().toISOString()
+      });
+      saveRecords(mockState.records);
+      syncVehiclesLatestRecord(mockState.vehicles, mockState.records);
+      const updated = mockState.records[idx];
+      recordUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(mockState.records))));
+      vehicleUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(mockState.vehicles.find(x => x.id === updated.vehicleId)))));
+      return updated;
+    },
+    addFollowUp: async (recordId, followUp) => {
+      const idx = mockState.records.findIndex(r => r.id === recordId);
+      if (idx === -1) return null;
+      if (!mockState.records[idx].followUps) mockState.records[idx].followUps = [];
+      const fu = { id: 'FU' + Date.now(), timestamp: new Date().toISOString(), ...followUp };
+      mockState.records[idx].followUps.push(fu);
+      saveRecords(mockState.records);
+      syncVehiclesLatestRecord(mockState.vehicles, mockState.records);
+      const updated = mockState.records[idx];
+      recordUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(mockState.records))));
+      vehicleUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(mockState.vehicles.find(x => x.id === updated.vehicleId)))));
+      return fu;
     },
     onInit: (cb) => {
       recordInitListeners.push(cb);

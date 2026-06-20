@@ -45,6 +45,17 @@ const RISK_COLORS = {
   normal: 'var(--risk-normal)'
 };
 
+const QUALITY_STATUS = {
+  pending_review: { label: '待复核', color: 'var(--risk-warning)', bg: 'rgba(245, 158, 11, 0.15)', next: 'under_qc', nextLabel: '开始质检' },
+  under_qc: { label: '质检中', color: 'var(--risk-warning)', bg: 'rgba(245, 158, 11, 0.15)', next: 'sampling', nextLabel: '抽样送检' },
+  sampling: { label: '已抽样', color: 'var(--risk-attention)', bg: 'rgba(251, 191, 36, 0.15)', next: 'qc_complete', nextLabel: '质检完成' },
+  qc_complete: { label: '质检完成', color: 'var(--accent-blue)', bg: 'rgba(59, 130, 246, 0.15)', next: null },
+  released: { label: '放行入库', color: 'var(--risk-normal)', bg: 'rgba(34, 197, 94, 0.15)', next: null, isEnd: true },
+  returned: { label: '已退回', color: 'var(--risk-critical)', bg: 'rgba(239, 68, 68, 0.15)', next: null, isEnd: true }
+};
+
+const NEED_REVIEW = ['quarantine', 'reject'];
+
 const REVIEW_CONCLUSION_OPTIONS = [
   { key: 'confirmed', label: '维持原决定' },
   { key: 'downgrade', label: '降低处置等级' },
@@ -60,8 +71,6 @@ const REVIEW_NEXT_ACTION_OPTIONS = [
   { key: 'temperature_verify', label: '重新核验温度' },
   { key: 'product_sample', label: '抽样送检化验' }
 ];
-
-const NEED_REVIEW = ['quarantine', 'reject'];
 
 function formatTime(iso) {
   const d = new Date(iso);
@@ -97,25 +106,32 @@ function EmptyState({ icon, title, description, actionText, onAction }) {
   );
 }
 
-function RecordRow({ record, onViewDetail, onStartReview }) {
+function RecordRow({ record, onViewDetail, onStartReview, onQualityAction }) {
   const time = new Date(record.createdAt);
   const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
   const canReview = NEED_REVIEW.includes(record.disposalDecision) && !record.review;
   const hasReviewed = !!record.review;
+  const qs = record.qualityStatus;
+  const qsInfo = qs ? QUALITY_STATUS[qs] : null;
 
   return (
     <div
+      onClick={() => onViewDetail(record)}
       style={{
         margin: '6px 0',
         padding: 14,
         borderRadius: 10,
         background: 'var(--bg-card)',
-        border: `1px solid ${hasReviewed ? 'var(--risk-normal)' : canReview ? 'var(--risk-warning)' : 'var(--border-color)'}`,
+        border: `1px solid ${hasReviewed ? 'var(--risk-normal)' : canReview ? 'var(--risk-warning)' : qsInfo ? qsInfo.color : 'var(--border-color)'}`,
         display: 'grid',
-        gridTemplateColumns: '160px 220px 1fr 140px 140px 180px 180px',
+        gridTemplateColumns: '150px 200px 1fr 130px 120px 170px 190px',
         gap: 12,
-        alignItems: 'center'
+        alignItems: 'center',
+        cursor: 'pointer',
+        transition: 'all 0.15s ease'
       }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--bg-card)'; }}
     >
       <div>
         <div style={{ fontSize: 15, fontWeight: 600, fontFamily: 'monospace', color: 'var(--accent-blue)' }}>
@@ -129,10 +145,7 @@ function RecordRow({ record, onViewDetail, onStartReview }) {
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <span style={{ fontSize: 15, fontWeight: 600 }}>{record.plateNumber}</span>
-          <span
-            className={`badge badge-${record.riskLevel}`}
-            style={{ fontSize: 10 }}
-          >
+          <span className={`badge badge-${record.riskLevel}`} style={{ fontSize: 10 }}>
             {RISK_LABELS[record.riskLevel] || record.riskLevel}
           </span>
         </div>
@@ -148,6 +161,14 @@ function RecordRow({ record, onViewDetail, onStartReview }) {
         <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
           🏭 {record.supplier}
         </div>
+        {record.disposalNotes && (
+          <div style={{
+            fontSize: 11, color: 'var(--text-muted)', marginTop: 3,
+            maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+          }} title={record.disposalNotes}>
+            💬 {record.disposalNotes}
+          </div>
+        )}
       </div>
 
       <div>
@@ -158,7 +179,7 @@ function RecordRow({ record, onViewDetail, onStartReview }) {
           {record.spotTemps?.max}℃
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-          标准 {record.standardTemp}℃ / 阈值 {record.thresholdTemp}℃
+          阈值 {record.thresholdTemp}℃
         </div>
       </div>
 
@@ -189,41 +210,54 @@ function RecordRow({ record, onViewDetail, onStartReview }) {
         }}>
           {DISPOSAL_LABELS[record.disposalDecision] || record.disposalDecisionLabel || record.disposalDecision}
         </div>
-        {hasReviewed ? (
-          <div style={{ fontSize: 11, color: 'var(--risk-normal)' }}>
-            ✓ 已复核 · {formatTime(record.review.reviewedAt)}
+        {qsInfo && (
+          <div style={{
+            display: 'inline-block',
+            padding: '2px 8px',
+            borderRadius: 4,
+            fontSize: 11,
+            fontWeight: 500,
+            color: qsInfo.color,
+            background: qsInfo.bg,
+            marginBottom: 4
+          }}>
+            {qsInfo.label}
           </div>
-        ) : canReview ? (
-          <div style={{ fontSize: 11, color: 'var(--risk-warning)' }}>
-            ⚠ 待复核
-          </div>
-        ) : null}
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+        )}
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
           👷 {record.receiverName || '未记录'}
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn btn-sm btn-outline" onClick={onViewDetail}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button className="btn btn-sm btn-outline" onClick={(e) => { e.stopPropagation(); onViewDetail(record); }}>
             查看详情
           </button>
           {canReview && (
-            <button className="btn btn-sm btn-primary" onClick={() => onStartReview(record)}>
+            <button className="btn btn-sm btn-primary" onClick={(e) => { e.stopPropagation(); onStartReview(record); }}>
               发起复核
             </button>
           )}
+          {qsInfo && qsInfo.next && !canReview && (
+            <button className="btn btn-sm" style={{ background: qsInfo.bg, color: qsInfo.color, border: `1px solid ${qsInfo.color}55` }}
+                    onClick={(e) => { e.stopPropagation(); onQualityAction(record, 'next'); }}>
+              {qsInfo.nextLabel}
+            </button>
+          )}
+          {qs === 'qc_complete' && (
+            <>
+              <button className="btn btn-sm" style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--risk-normal)', border: '1px solid rgba(34,197,94,0.4)' }}
+                      onClick={(e) => { e.stopPropagation(); onQualityAction(record, 'released'); }}>
+                放行
+              </button>
+              <button className="btn btn-sm" style={{ background: 'rgba(239,68,68,0.12)', color: 'var(--risk-critical)', border: '1px solid rgba(239,68,68,0.35)' }}
+                      onClick={(e) => { e.stopPropagation(); onQualityAction(record, 'returned'); }}>
+                退回
+              </button>
+            </>
+          )}
         </div>
-        {record.notes && record.notes.length > 18 ? (
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', maxWidth: 220, textAlign: 'right' }}
-               title={record.notes}>
-            {record.notes.slice(0, 18)}…
-          </div>
-        ) : record.notes ? (
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', maxWidth: 220, textAlign: 'right' }}>
-            {record.notes}
-          </div>
-        ) : null}
       </div>
     </div>
   );
@@ -378,6 +412,311 @@ function ReviewDialog({ record, onClose, onSubmit }) {
             <button type="submit" className="btn btn-primary">提交复核</button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function RecordDetailDialog({ record, onClose, onQualityAction, onAddFollowUp }) {
+  const [showAddFollowUp, setShowAddFollowUp] = useState(false);
+  const [followType, setFollowType] = useState('note');
+  const [followNote, setFollowNote] = useState('');
+  const [followOperator, setFollowOperator] = useState('');
+
+  if (!record) return null;
+
+  const qs = record.qualityStatus;
+  const qsInfo = qs ? QUALITY_STATUS[qs] : null;
+
+  const handleAddFollowUp = (e) => {
+    e.preventDefault();
+    if (!followNote.trim()) return;
+    const typeLabelMap = { note: '备注', temperature: '温度复测', qc: '质检记录', contact: '沟通记录' };
+    onAddFollowUp(record.id, {
+      type: followType,
+      typeLabel: typeLabelMap[followType] || '跟进',
+      operator: followOperator.trim() || '值班员',
+      note: followNote.trim()
+    });
+    setShowAddFollowUp(false);
+    setFollowNote('');
+    setFollowOperator('');
+  };
+
+  const sortedFollowUps = (record.followUps || []).slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000,
+      padding: 24
+    }} onClick={onClose}>
+      <div style={{
+        width: 820,
+        maxHeight: '90vh',
+        background: 'var(--bg-card)',
+        borderRadius: 14,
+        boxShadow: '0 24px 80px rgba(0,0,0,0.4)',
+        overflow: 'hidden',
+        border: '1px solid var(--border-color)',
+        display: 'flex',
+        flexDirection: 'column'
+      }} onClick={(e) => e.stopPropagation()}>
+        <div style={{
+          padding: '18px 24px',
+          background: 'var(--bg-secondary)',
+          borderBottom: '1px solid var(--border-color)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+              <span style={{ fontSize: 18, fontWeight: 600 }}>{record.plateNumber}</span>
+              <span className={`badge badge-${record.riskLevel}`} style={{ fontSize: 11 }}>
+                {RISK_LABELS[record.riskLevel] || record.riskLevel}
+              </span>
+              <span style={{
+                padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                color: DISPOSAL_COLORS[record.disposalDecision],
+                background: `${DISPOSAL_COLORS[record.disposalDecision]}1a`
+              }}>
+                {DISPOSAL_LABELS[record.disposalDecision] || record.disposalDecisionLabel}
+              </span>
+              {qsInfo && (
+                <span style={{
+                  padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 500,
+                  color: qsInfo.color, background: qsInfo.bg
+                }}>
+                  {qsInfo.label}
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              📦 {record.productName} · 🏭 {record.supplier} · 👤 {record.driver}
+            </div>
+          </div>
+          <button className="btn btn-sm btn-outline" onClick={onClose}>关闭</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+          <Section title="📋 收货登记信息">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+              <InfoItem label="到车时间" value={record.arrivalTime || '-'} mono />
+              <InfoItem label="开门前温度" value={record.doorOpenTemp != null ? `${record.doorOpenTemp}℃` : '-'} mono />
+              <InfoItem label="抽检最高温" value={`${record.spotTemps?.max || '-'}℃`}
+                        valueColor={record.isOverThreshold ? 'var(--risk-critical)' : 'var(--risk-normal)'} mono />
+              <InfoItem label="温度阈值" value={`${record.thresholdTemp}℃`} mono />
+              <InfoItem label="外包装状态" value={record.packageConditionLabel || record.packageCondition || '-'} />
+              <InfoItem label="收货员" value={record.receiverName || '未记录'} />
+              <InfoItem label="处置决定" value={DISPOSAL_LABELS[record.disposalDecision] || record.disposalDecisionLabel}
+                        valueColor={DISPOSAL_COLORS[record.disposalDecision]} />
+              <InfoItem label="登记时间" value={formatTime(record.createdAt)} mono />
+            </div>
+            {record.disposalNotes && (
+              <div style={{
+                marginTop: 12, padding: '10px 14px',
+                borderRadius: 8, background: 'var(--bg-secondary)',
+                fontSize: 12, lineHeight: 1.7
+              }}>
+                <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>处置说明：</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{record.disposalNotes}</span>
+              </div>
+            )}
+            {record.packageNotes && (
+              <div style={{
+                marginTop: 8, padding: '10px 14px',
+                borderRadius: 8, background: 'var(--bg-secondary)',
+                fontSize: 12, lineHeight: 1.7
+              }}>
+                <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>包装备注：</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{record.packageNotes}</span>
+              </div>
+            )}
+          </Section>
+
+          {record.review && (
+            <Section title="✓ 复核信息">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+                <InfoItem label="复核结论" value={record.review.conclusionLabel || record.review.conclusion} />
+                <InfoItem label="复核人" value={record.review.reviewer} />
+                <InfoItem label="复核时间" value={formatTime(record.review.reviewedAt)} mono />
+              </div>
+              <div style={{
+                marginTop: 12, padding: '10px 14px',
+                borderRadius: 8, background: 'var(--bg-secondary)',
+                fontSize: 12, lineHeight: 1.7
+              }}>
+                <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>后续动作：</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{record.review.nextActionLabel || record.review.nextAction}</span>
+              </div>
+              {record.review.note && (
+                <div style={{
+                  marginTop: 8, padding: '10px 14px',
+                  borderRadius: 8, background: 'var(--bg-secondary)',
+                  fontSize: 12, lineHeight: 1.7
+                }}>
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>复核备注：</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{record.review.note}</span>
+                </div>
+              )}
+            </Section>
+          )}
+
+          <Section title="📊 质检跟进过程" action={
+            qsInfo && !qsInfo.isEnd ? (
+              <button className="btn btn-xs btn-outline" onClick={() => setShowAddFollowUp(true)}>
+                + 添加跟进
+              </button>
+            ) : null
+          }>
+            {qsInfo && (
+              <div style={{
+                padding: 12, borderRadius: 10,
+                background: qsInfo.bg, border: `1px solid ${qsInfo.color}44`,
+                marginBottom: 14,
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                flexWrap: 'wrap', gap: 10
+              }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: qsInfo.color }}>
+                    当前状态：{qsInfo.label}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                    共 {record.followUps?.length || 0} 条跟进记录
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {qsInfo.next && (
+                    <button className="btn btn-sm" style={{ background: qsInfo.color, color: 'white', border: 'none' }}
+                            onClick={() => onQualityAction(record, 'next')}>
+                      {qsInfo.nextLabel}
+                    </button>
+                  )}
+                  {qs === 'qc_complete' && (
+                    <>
+                      <button className="btn btn-sm" style={{ background: 'var(--risk-normal)', color: 'white', border: 'none' }}
+                              onClick={() => onQualityAction(record, 'released')}>
+                        放行入库
+                      </button>
+                      <button className="btn btn-sm" style={{ background: 'var(--risk-critical)', color: 'white', border: 'none' }}
+                              onClick={() => onQualityAction(record, 'returned')}>
+                        退回处理
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {showAddFollowUp && (
+              <div style={{
+                padding: 14, borderRadius: 10,
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border-color)',
+                marginBottom: 16
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 10 }}>添加跟进记录</div>
+                <form onSubmit={handleAddFollowUp} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <select value={followType} onChange={(e) => setFollowType(e.target.value)}
+                            className="form-input" style={{ fontSize: 12 }}>
+                      <option value="note">备注</option>
+                      <option value="temperature">温度复测</option>
+                      <option value="qc">质检记录</option>
+                      <option value="contact">沟通记录</option>
+                    </select>
+                    <input type="text" placeholder="操作人（选填）" value={followOperator}
+                           onChange={(e) => setFollowOperator(e.target.value)}
+                           className="form-input" style={{ fontSize: 12 }} />
+                  </div>
+                  <textarea rows={2} placeholder="跟进内容..." value={followNote}
+                            onChange={(e) => setFollowNote(e.target.value)}
+                            className="form-input" style={{ fontSize: 12, resize: 'vertical' }} required />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button type="button" className="btn btn-xs btn-outline" onClick={() => setShowAddFollowUp(false)}>
+                      取消
+                    </button>
+                    <button type="submit" className="btn btn-xs btn-primary">
+                      添加
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {sortedFollowUps.length === 0 ? (
+              <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                暂无跟进记录
+              </div>
+            ) : (
+              <div style={{ position: 'relative', paddingLeft: 16 }}>
+                <div style={{
+                  position: 'absolute', left: 5, top: 6, bottom: 6,
+                  width: 2, background: 'var(--border-color)'
+                }} />
+                {sortedFollowUps.map((fu, idx) => (
+                  <div key={fu.id || idx} style={{ position: 'relative', marginBottom: 14, paddingLeft: 18 }}>
+                    <div style={{
+                      position: 'absolute', left: -13, top: 4,
+                      width: 10, height: 10, borderRadius: '50%',
+                      background: fu.type === 'register' ? 'var(--accent-blue)' :
+                                 fu.type === 'review' ? 'var(--risk-normal)' :
+                                 fu.type === 'status_change' ? 'var(--risk-warning)' :
+                                 'var(--text-muted)',
+                      boxShadow: '0 0 0 3px var(--bg-card)'
+                    }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {fu.typeLabel || fu.type}
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {fu.operator} · {formatTime(fu.timestamp)}
+                      </span>
+                    </div>
+                    {fu.note && (
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                        {fu.note}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, action, children }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: 12, paddingBottom: 8,
+        borderBottom: '1px solid var(--border-color)'
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{title}</div>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function InfoItem({ label, value, valueColor, mono }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
+      <div style={{
+        fontSize: 13,
+        fontWeight: 500,
+        color: valueColor || 'var(--text-primary)',
+        fontFamily: mono ? 'monospace' : 'inherit'
+      }}>
+        {value}
       </div>
     </div>
   );
@@ -553,8 +892,8 @@ export default function App() {
   const [disposalFilter, setDisposalFilter] = useState('all');
 
   const [reviewRecord, setReviewRecord] = useState(null);
+  const [detailRecord, setDetailRecord] = useState(null);
   const [showHandover, setShowHandover] = useState(false);
-  const [copiedReview, setCopiedReview] = useState(false);
 
   useEffect(() => {
     const bridge = ensureBridge();
@@ -575,6 +914,14 @@ export default function App() {
 
     return () => {};
   }, []);
+
+  useEffect(() => {
+    if (!detailRecord) return;
+    const fresh = records.find(r => r.id === detailRecord.id);
+    if (fresh && fresh !== detailRecord) {
+      setDetailRecord(fresh);
+    }
+  }, [records, detailRecord]);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -600,14 +947,19 @@ export default function App() {
       conditional: todayRecords.filter(r => r.disposalDecision === 'conditional').length,
       quarantine: todayRecords.filter(r => r.disposalDecision === 'quarantine').length,
       reject: todayRecords.filter(r => r.disposalDecision === 'reject').length,
-      pendingReview: todayRecords.filter(r => NEED_REVIEW.includes(r.disposalDecision) && !r.review).length,
+      pendingReview: todayRecords.filter(r => r.qualityStatus === 'pending_review' || (NEED_REVIEW.includes(r.disposalDecision) && !r.review)).length,
+      underQc: todayRecords.filter(r => r.qualityStatus && ['under_qc', 'sampling', 'qc_complete'].includes(r.qualityStatus)).length,
       reviewed: todayRecords.filter(r => r.review).length
     };
   }, [todayRecords]);
 
   const hasAnyFilter = riskFilter !== 'all' || disposalFilter !== 'all' || plateSearch.trim() !== '';
 
-  const handleViewDetail = (vehicleId) => {
+  const handleViewRecordDetail = (record) => {
+    setDetailRecord(record);
+  };
+
+  const handleViewVehicleDetail = (vehicleId) => {
     ensureBridge().window.openDetail(vehicleId);
   };
 
@@ -633,15 +985,32 @@ export default function App() {
     setReviewRecord(null);
   };
 
-  const handleCopyHandover = async () => {
-    const text = generateHandoverText(todayRecords, today);
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
+  const handleQualityAction = async (record, action) => {
+    const bridge = ensureBridge();
+    const { records: recordsAPI } = bridge;
+
+    if (action === 'next') {
+      const qsInfo = QUALITY_STATUS[record.qualityStatus];
+      if (qsInfo && qsInfo.next) {
+        const nextInfo = QUALITY_STATUS[qsInfo.next];
+        await recordsAPI.updateQualityStatus(
+          record.id, qsInfo.next,
+          nextInfo ? nextInfo.label : qsInfo.next,
+          '值班员',
+          `状态更新为：${nextInfo ? nextInfo.label : qsInfo.next}`
+        );
       }
-      setCopiedReview(true);
-      setTimeout(() => setCopiedReview(false), 2000);
-    } catch (e) {}
+    } else if (action === 'released') {
+      await recordsAPI.updateQualityStatus(record.id, 'released', '放行入库', '值班员', '质检通过，放行入库');
+    } else if (action === 'returned') {
+      await recordsAPI.updateQualityStatus(record.id, 'returned', '已退回', '值班员', '质检不合格，退回处理');
+    }
+  };
+
+  const handleAddFollowUp = async (recordId, followUp) => {
+    const bridge = ensureBridge();
+    const { records: recordsAPI } = bridge;
+    await recordsAPI.addFollowUp(recordId, followUp);
   };
 
   return (
@@ -751,13 +1120,14 @@ export default function App() {
           background: 'var(--bg-primary)',
           borderBottom: '1px solid var(--border-color)',
           display: 'grid',
-          gridTemplateColumns: 'repeat(5, 1fr)',
+          gridTemplateColumns: 'repeat(6, 1fr)',
           gap: 10,
           fontSize: 12
         }}>
           <StatBadge label="今日处理" value={stats.total} color="var(--text-primary)" icon="🚚" />
           <StatBadge label="正常入库" value={stats.accept} color="var(--risk-normal)" icon="✅" />
           <StatBadge label="待复核" value={stats.pendingReview} color="var(--risk-warning)" icon="⚠️" />
+          <StatBadge label="质检中" value={stats.underQc} color="var(--risk-attention)" icon="🔬" />
           <StatBadge label="已复核" value={stats.reviewed} color="var(--risk-normal)" icon="✓" />
           <StatBadge label="拒收退回" value={stats.reject} color="var(--risk-critical)" icon="🚫" />
         </div>
@@ -766,7 +1136,7 @@ export default function App() {
       <div style={{
         padding: '8px 24px 4px',
         display: 'grid',
-        gridTemplateColumns: '160px 220px 1fr 140px 140px 180px 180px',
+        gridTemplateColumns: '150px 200px 1fr 130px 120px 170px 190px',
         gap: 12,
         fontSize: 12,
         color: 'var(--text-muted)',
@@ -777,7 +1147,7 @@ export default function App() {
         <div>货品与供应商</div>
         <div>抽检最高温</div>
         <div>风险等级</div>
-        <div>处置决定 / 复核</div>
+        <div>处置 / 质检状态</div>
         <div style={{ textAlign: 'right' }}>操作</div>
       </div>
 
@@ -812,8 +1182,9 @@ export default function App() {
             <RecordRow
               key={record.id}
               record={record}
-              onViewDetail={() => handleViewDetail(record.vehicleId)}
+              onViewDetail={handleViewRecordDetail}
               onStartReview={handleStartReview}
+              onQualityAction={handleQualityAction}
             />
           ))
         )}
@@ -824,6 +1195,15 @@ export default function App() {
           record={reviewRecord}
           onClose={() => setReviewRecord(null)}
           onSubmit={handleSubmitReview}
+        />
+      )}
+
+      {detailRecord && (
+        <RecordDetailDialog
+          record={detailRecord}
+          onClose={() => setDetailRecord(null)}
+          onQualityAction={handleQualityAction}
+          onAddFollowUp={handleAddFollowUp}
         />
       )}
 

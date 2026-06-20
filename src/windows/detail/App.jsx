@@ -560,6 +560,14 @@ function LatestRecordCard({ record }) {
     reject: '拒收退回'
   };
   const NEED_REVIEW = ['quarantine', 'reject'];
+  const QUALITY_STATUS = {
+    pending_review: { label: '待复核', color: 'var(--risk-warning)', bg: 'rgba(245, 158, 11, 0.15)' },
+    under_qc: { label: '质检中', color: 'var(--risk-warning)', bg: 'rgba(245, 158, 11, 0.15)' },
+    sampling: { label: '已抽样', color: 'var(--risk-attention)', bg: 'rgba(251, 191, 36, 0.15)' },
+    qc_complete: { label: '质检完成', color: 'var(--accent-blue)', bg: 'rgba(59, 130, 246, 0.15)' },
+    released: { label: '放行入库', color: 'var(--risk-normal)', bg: 'rgba(34, 197, 94, 0.15)' },
+    returned: { label: '已退回', color: 'var(--risk-critical)', bg: 'rgba(239, 68, 68, 0.15)' }
+  };
 
   const time = new Date(record.createdAt);
   const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
@@ -567,6 +575,10 @@ function LatestRecordCard({ record }) {
   const tempDiff = record.tempDiff != null ? record.tempDiff : (record.spotTemps?.max - record.thresholdTemp).toFixed(1);
   const hasReviewed = !!record.review;
   const canReview = NEED_REVIEW.includes(record.disposalDecision) && !hasReviewed;
+  const qs = record.qualityStatus;
+  const qsInfo = qs ? QUALITY_STATUS[qs] : null;
+  const followUps = record.followUps || [];
+  const sortedFollowUps = followUps.slice().sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
@@ -705,6 +717,64 @@ function LatestRecordCard({ record }) {
               {record.review.note}
             </div>
           )}
+        </div>
+      )}
+
+      {qsInfo && sortedFollowUps.length > 0 && (
+        <div style={{
+          padding: 14,
+          borderRadius: 10,
+          background: qsInfo.bg,
+          border: `1px solid ${qsInfo.color}44`,
+          marginTop: 12
+        }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: 14
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: qsInfo.color }}>
+              📊 质检跟进过程
+            </div>
+            <div style={{
+              padding: '4px 10px', borderRadius: 6,
+              fontSize: 12, fontWeight: 500,
+              color: qsInfo.color, background: 'rgba(255,255,255,0.85)'
+            }}>
+              当前：{qsInfo.label}
+            </div>
+          </div>
+          <div style={{ position: 'relative', paddingLeft: 20, paddingTop: 4 }}>
+            <div style={{
+              position: 'absolute', left: 8, top: 6, bottom: 6,
+              width: 2, background: `${qsInfo.color}55`
+            }} />
+            {sortedFollowUps.map((fu, idx) => (
+              <div key={fu.id || idx} style={{ position: 'relative', marginBottom: 12, paddingLeft: 14 }}>
+                <div style={{
+                  position: 'absolute', left: -17, top: 3,
+                  width: 12, height: 12, borderRadius: '50%',
+                  background: fu.type === 'register' ? 'var(--accent-blue)' :
+                             fu.type === 'review' ? 'var(--risk-normal)' :
+                             fu.type === 'status_change' ? qsInfo.color :
+                             'var(--text-muted)',
+                  boxShadow: '0 0 0 3px var(--bg-card)'
+                }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {fu.typeLabel || fu.type}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    {fu.operator} · {new Date(fu.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                {fu.note && (
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    {fu.note}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
