@@ -553,9 +553,20 @@ function LatestRecordCard({ record }) {
     quarantine: 'var(--risk-warning)',
     reject: 'var(--risk-critical)'
   };
+  const DISPOSAL_LABELS = {
+    accept: '正常入库',
+    conditional: '条件入库',
+    quarantine: '隔离质检',
+    reject: '拒收退回'
+  };
+  const NEED_REVIEW = ['quarantine', 'reject'];
 
   const time = new Date(record.createdAt);
   const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
+  const isOver = record.isOverThreshold || (record.spotTemps?.max > record.thresholdTemp);
+  const tempDiff = record.tempDiff != null ? record.tempDiff : (record.spotTemps?.max - record.thresholdTemp).toFixed(1);
+  const hasReviewed = !!record.review;
+  const canReview = NEED_REVIEW.includes(record.disposalDecision) && !hasReviewed;
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
@@ -566,39 +577,54 @@ function LatestRecordCard({ record }) {
         </span>
       </h3>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>处置决定</div>
           <div style={{
             fontSize: 14, fontWeight: 600,
             color: DISPOSAL_COLORS[record.disposalDecision]
           }}>
-            {record.disposalDecisionLabel}
+            {record.disposalDecisionLabel || DISPOSAL_LABELS[record.disposalDecision] || record.disposalDecision}
           </div>
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>抽检最高温</div>
           <div style={{
             fontSize: 16, fontWeight: 700, fontFamily: 'monospace',
-            color: record.spotTemps.max > record.thresholdTemp ? 'var(--risk-critical)' : 'var(--risk-normal)'
+            color: isOver ? 'var(--risk-critical)' : 'var(--risk-normal)'
           }}>
-            {record.spotTemps.max}℃
+            {record.spotTemps?.max}℃
+            {isOver && (
+              <span style={{ fontSize: 11, marginLeft: 4, fontWeight: 500 }}>
+                超 {tempDiff}℃
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+            标准 {record.standardTemp}℃ · 阈值 {record.thresholdTemp}℃
           </div>
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>外包装状态</div>
-          <div style={{ fontSize: 13, fontWeight: 500 }}>{record.packageConditionLabel}</div>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>{record.packageConditionLabel || record.packageCondition}</div>
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>收货员</div>
-          <div style={{ fontSize: 13, fontWeight: 500 }}>{record.receiverName}</div>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>{record.receiverName || '未记录'}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>到车时间</div>
+          <div style={{ fontSize: 13, fontFamily: 'monospace', fontWeight: 500 }}>{record.arrivalTime || '-'}</div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>
+            开门前 {record.doorOpenTemp != null ? record.doorOpenTemp + '℃' : '未记录'}
+          </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         {record.disposalNotes && (
           <div style={{
-            flex: 1, minWidth: 300,
+            flex: 1, minWidth: 260,
             padding: '10px 14px',
             borderRadius: 6,
             background: 'var(--bg-secondary)',
@@ -610,7 +636,7 @@ function LatestRecordCard({ record }) {
         )}
         {record.packageNotes && (
           <div style={{
-            flex: 1, minWidth: 300,
+            flex: 1, minWidth: 260,
             padding: '10px 14px',
             borderRadius: 6,
             background: 'var(--bg-secondary)',
@@ -621,6 +647,66 @@ function LatestRecordCard({ record }) {
           </div>
         )}
       </div>
+
+      {canReview && (
+        <div style={{
+          padding: '10px 14px',
+          borderRadius: 8,
+          background: 'rgba(245, 158, 11, 0.1)',
+          border: '1px solid rgba(245, 158, 11, 0.35)',
+          fontSize: 12,
+          color: 'var(--risk-warning)'
+        }}>
+          ⚠ 此车为【{DISPOSAL_LABELS[record.disposalDecision]}】，待质检主管复核。请在「今日处置记录」中发起复核。
+        </div>
+      )}
+
+      {hasReviewed && (
+        <div style={{
+          padding: 14,
+          borderRadius: 10,
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-color)',
+          marginTop: 4
+        }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: 12
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--risk-normal)' }}>
+              ✓ 复核信息
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {new Date(record.review.reviewedAt).toLocaleString('zh-CN')}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>复核结论</div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{record.review.conclusionLabel}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>复核人</div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{record.review.reviewer}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>后续动作</div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{record.review.nextActionLabel}</div>
+            </div>
+          </div>
+          {record.review.note && (
+            <div style={{
+              marginTop: 12, padding: '10px 14px',
+              borderRadius: 6,
+              background: 'var(--bg-primary)',
+              fontSize: 12, color: 'var(--text-secondary)'
+            }}>
+              <span style={{ color: 'var(--text-muted)' }}>复核备注：</span>
+              {record.review.note}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

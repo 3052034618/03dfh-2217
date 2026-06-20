@@ -22,13 +22,16 @@ export default function App() {
   const [filter, setFilter] = useState('all');
   const [sortByRisk, setSortByRisk] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const bridge = ensureBridge();
     const { vehicles: vehiclesAPI } = bridge;
     const loadData = async () => {
+      setLoading(true);
       const data = await vehiclesAPI.getAll();
       setVehicles(data);
+      setLoading(false);
     };
     loadData();
 
@@ -195,15 +198,28 @@ export default function App() {
         overflowY: 'auto',
         padding: '4px 24px 24px'
       }}>
-        {filteredVehicles.length === 0 ? (
+        {loading ? (
           <EmptyState
-            icon={filter === 'all' ? '🚚' : '🔍'}
-            title={filter === 'all' ? '今天没有待处理的车辆' : `没有「${RISK_FILTERS.find(f => f.key === filter)?.label || ''}」等级的车辆`}
-            description={filter === 'all' ? '暂无车辆在途或等待入场，休息一下吧' : '试试调整筛选条件，或者'}
-            actionText={filter !== 'all' ? '查看全部车辆' : null}
-            onAction={filter !== 'all' ? () => setFilter('all') : null}
+            icon="⏳"
+            title="正在获取队列数据中..."
+            description="正在加载到车队列，稍候片刻"
+          />
+        ) : filteredVehicles.length === 0 ? (
+          filter === 'all' ? (
+          <EmptyState
+            icon="🚚"
+            title="今天没有待处理的车辆"
+            description={`当前时间 ${formatTime(currentTime)}，暂无车辆在途或等待入场。值班员可以先休息一下，新的车辆任务会自动进入队列。如果是早班刚上班或晚班已清场的话，稍后会出现这种情况。`}
           />
         ) : (
+          <EmptyState
+            icon="🔍"
+            title={`没有「${RISK_FILTERS.find(f => f.key === filter)?.label || filter}」等级的车辆`}
+            description={`目前共有 ${vehicles.length} 辆车在队列中。当前筛选等级为「${RISK_FILTERS.find(f => f.key === filter)?.label}」，此等级下暂无车辆，试试切换筛选或`}
+            actionText="查看全部车辆"
+            onAction={() => setFilter('all')}
+          />
+        )) : (
           filteredVehicles.map((vehicle, index) => (
             <VehicleCard
               key={vehicle.id}
@@ -229,23 +245,17 @@ function EmptyState({ icon, title, description, actionText, onAction }) {
     }}>
       <div style={{ fontSize: 56, opacity: 0.4 }}>{icon}</div>
       <div style={{ fontSize: 17, fontWeight: 500, color: 'var(--text-secondary)' }}>{title}</div>
-      <div style={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+      <div style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 380, textAlign: 'center', whiteSpace: 'pre-line' }}>
         {description}
-        {actionText && onAction && (
-          <button
-            onClick={onAction}
-            style={{
-              color: 'var(--accent-blue)',
-              background: 'none', border: 'none',
-              cursor: 'pointer', fontSize: 13,
-              textDecoration: 'underline',
-              padding: 0
-            }}
-          >
-            {actionText}
-          </button>
-        )}
       </div>
+      {actionText && onAction && (
+        <button
+          onClick={onAction}
+          className="btn btn-primary btn-sm"
+        >
+          {actionText}
+        </button>
+      )}
     </div>
   );
 }

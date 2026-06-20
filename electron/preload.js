@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (record) => ipcRenderer.invoke('records:create', record),
     getAll: () => ipcRenderer.invoke('records:getAll'),
     getByVehicleId: (vehicleId) => ipcRenderer.invoke('records:getByVehicleId', vehicleId),
+    updateReview: (recordId, reviewData) => ipcRenderer.invoke('records:updateReview', recordId, reviewData),
     onInit: (callback) => {
       ipcRenderer.on('record:init', (_, data) => callback(data));
     },

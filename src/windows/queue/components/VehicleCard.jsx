@@ -218,27 +218,40 @@ export default function VehicleCard({ vehicle, priority, onViewDetail, onStartRe
         {isReceived && vehicle.latestRecord ? (
           <>
             <div style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: DISPOSAL_COLORS[vehicle.latestRecord.disposalDecision],
-              marginBottom: 4
-            }}>
-              {vehicle.latestRecord.disposalDecisionLabel}
-            </div>
+            fontSize: 13,
+            fontWeight: 600,
+            color: DISPOSAL_COLORS[vehicle.latestRecord.disposalDecision] || 'var(--text-primary)',
+            marginBottom: 4
+          }}>
+            {vehicle.latestRecord.disposalDecisionLabel || vehicle.latestRecord.disposalDecision}
+          </div>
             <div style={{
-              fontSize: 11,
-              color: vehicle.latestRecord.isOverThreshold ? 'var(--risk-critical)' : 'var(--text-muted)'
-            }}>
-              抽检 {vehicle.latestRecord.spotTemps.max}℃
-              {vehicle.latestRecord.isOverThreshold && ` · 超${vehicle.latestRecord.tempDiff}℃`}
-            </div>
+            fontSize: 11,
+            color: (vehicle.latestRecord.isOverThreshold || vehicle.latestRecord.spotTemps?.max > vehicle.latestRecord.thresholdTemp) ? 'var(--risk-critical)' : 'var(--text-muted)'
+          }}>
+            抽检 {vehicle.latestRecord.spotTemps?.max}℃
+            {(vehicle.latestRecord.isOverThreshold || vehicle.latestRecord.spotTemps?.max > vehicle.latestRecord.thresholdTemp) && (
+              <span>
+                 · 超{vehicle.latestRecord.tempDiff || (vehicle.latestRecord.spotTemps?.max - vehicle.latestRecord.thresholdTemp).toFixed(1)}℃
+              </span>
+            )}
+          </div>
             <div style={{
-              fontSize: 11,
-              color: 'var(--text-muted)',
-              marginTop: 2
-            }}>
-              {new Date(vehicle.latestRecord.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 处置
+            fontSize: 11,
+            color: 'var(--text-muted)',
+            marginTop: 2
+          }}>
+            👷 {vehicle.latestRecord.receiverName || '未记录'} · {new Date(vehicle.latestRecord.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 处置
+          </div>
+            {vehicle.latestRecord.review ? (
+            <div style={{ fontSize: 11, color: 'var(--risk-normal)', marginTop: 3 }}>
+              ✓ 已复核 · {vehicle.latestRecord.review.conclusionLabel || vehicle.latestRecord.review.conclusionLabel || '已处理完毕'}
             </div>
+          ) : (vehicle.latestRecord.disposalDecision === 'quarantine' || vehicle.latestRecord.disposalDecision === 'reject') && (
+            <div style={{ fontSize: 11, color: 'var(--risk-warning)', marginTop: 3 }}>
+              ⚠ 待复核
+            </div>
+          )}
           </>
         ) : (
           <>

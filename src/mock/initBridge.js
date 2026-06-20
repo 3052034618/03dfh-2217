@@ -120,9 +120,36 @@ function generateTemperatureHistory(maxTemp, tempTrend, productType) {
   return h;
 }
 
+const STORAGE_KEY = 'cold_chain_records_v1';
+function loadRecords() {
+  try { if (typeof localStorage !== 'undefined') { const raw = localStorage.getItem(STORAGE_KEY); if (raw) return JSON.parse(raw); } } catch (e) {}
+  return [];
+}
+function saveRecords(recs) {
+  try { if (typeof localStorage !== 'undefined') { localStorage.setItem(STORAGE_KEY, JSON.stringify(recs)); } } catch (e) {}
+}
+function syncVehiclesLatestRecord(vehicles, records) {
+  const map = {};
+  records.forEach(r => {
+    if (!map[r.vehicleId] || new Date(r.createdAt) > new Date(map[r.vehicleId].createdAt)) {
+      map[r.vehicleId] = r;
+    }
+  });
+  vehicles.forEach(v => {
+    if (map[v.id]) {
+      v.latestRecord = map[v.id];
+      if (!v.status || v.status !== 'received') v.status = 'received';
+    }
+  });
+}
+
+const initialVehicles = generateMockVehicles();
+const initialRecords = loadRecords();
+syncVehiclesLatestRecord(initialVehicles, initialRecords);
+
 const mockState = {
-  vehicles: generateMockVehicles(),
-  records: [],
+  vehicles: initialVehicles,
+  records: initialRecords,
   detailVehicleId: null,
   recordVehicleId: null
 };
@@ -134,8 +161,12 @@ const vehicleUpdateListeners = [];
 
 const mockAPI = {
   vehicles: {
-    getAll: async () => JSON.parse(JSON.stringify(mockState.vehicles)),
+    getAll: async () => {
+      syncVehiclesLatestRecord(mockState.vehicles, mockState.records);
+      return JSON.parse(JSON.stringify(mockState.vehicles));
+    },
     getById: async (id) => {
+      syncVehiclesLatestRecord(mockState.vehicles, mockState.records);
       const v = mockState.vehicles.find(x => x.id === id);
       if (v) {
         return { ...JSON.parse(JSON.stringify(v)), temperatureHistory: generateTemperatureHistory(v.maxTemp, v.tempTrend, v.productType) };
@@ -154,6 +185,7 @@ const mockAPI = {
           v.latestRecord = latestRecord;
         }
         vehicleUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(v))));
+        saveRecords(mockState.records);
         return JSON.parse(JSON.stringify(v));
       }
       return null;
@@ -180,13 +212,30 @@ const mockAPI = {
   },
   records: {
     create: async (rec) => {
-      const r = { id: 'REC' + Date.now(), ...rec, createdAt: new Date().toISOString() };
+      const r = { id: 'REC' + Date.now(), review: null, ...rec, createdAt: new Date().toISOString() };
       mockState.records.unshift(r);
+      saveRecords(mockState.records);
+      syncVehiclesLatestRecord(mockState.vehicles, mockState.records);
       recordUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(mockState.records))));
+      vehicleUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(mockState.vehicles.find(x => x.id === r.vehicleId)))));
       return r;
     },
     getAll: async () => JSON.parse(JSON.stringify(mockState.records)),
     getByVehicleId: async (vehicleId) => JSON.parse(JSON.stringify(mockState.records.filter(r => r.vehicleId === vehicleId))),
+    updateReview: async (recordId, reviewData) => {
+      const idx = mockState.records.findIndex(r => r.id === recordId);
+      if (idx === -1) return null;
+      mockState.records[idx] = {
+        ...mockState.records[idx],
+        review: { ...reviewData, reviewedAt: new Date().toISOString() }
+      };
+      saveRecords(mockState.records);
+      syncVehiclesLatestRecord(mockState.vehicles, mockState.records);
+      const updated = mockState.records[idx];
+      recordUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(mockState.records))));
+      vehicleUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(mockState.vehicles.find(x => x.id === updated.vehicleId)))));
+      return updated;
+    },
     onInit: (cb) => {
       recordInitListeners.push(cb);
       if (mockState.recordVehicleId) cb(mockState.recordVehicleId);

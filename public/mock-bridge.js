@@ -48,23 +48,40 @@ function generateTemperatureHistory(maxTemp,tempTrend,productType){
   return h;
 }
 
-const mockState={vehicles:generateMockVehicles(),records:[],detailVehicleId:null,recordVehicleId:null};
+const STORAGE_KEY='cold_chain_records_v1';
+function loadRecords(){
+  try{if(typeof localStorage!=='undefined'){const raw=localStorage.getItem(STORAGE_KEY);if(raw)return JSON.parse(raw);}}catch(e){}
+  return [];
+}
+function saveRecords(recs){
+  try{if(typeof localStorage!=='undefined'){localStorage.setItem(STORAGE_KEY,JSON.stringify(recs));}}catch(e){}
+}
+function syncVehiclesLatestRecord(vehicles,records){
+  const map={};records.forEach(r=>{if(!map[r.vehicleId]||new Date(r.createdAt)>new Date(map[r.vehicleId].createdAt))map[r.vehicleId]=r;});
+  vehicles.forEach(v=>{if(map[v.id]){v.latestRecord=map[v.id];if(!v.status||v.status!=='received')v.status='received';}});
+}
+
+const initialVehicles=generateMockVehicles();
+const initialRecords=loadRecords();
+syncVehiclesLatestRecord(initialVehicles,initialRecords);
+const mockState={vehicles:initialVehicles,records:initialRecords,detailVehicleId:null,recordVehicleId:null};
 const detailListeners=[];const recordInitListeners=[];const recordUpdateListeners=[];const vehicleUpdateListeners=[];
 
 const mockAPI={
   vehicles:{
-    getAll:async()=>JSON.parse(JSON.stringify(mockState.vehicles)),
-    getById:async(id)=>{const v=mockState.vehicles.find(x=>x.id===id);if(v){return Object.assign(JSON.parse(JSON.stringify(v)),{temperatureHistory:generateTemperatureHistory(v.maxTemp,v.tempTrend,v.productType)});}return null;},
+    getAll:async()=>{syncVehiclesLatestRecord(mockState.vehicles,mockState.records);return JSON.parse(JSON.stringify(mockState.vehicles));},
+    getById:async(id)=>{syncVehiclesLatestRecord(mockState.vehicles,mockState.records);const v=mockState.vehicles.find(x=>x.id===id);if(v){return Object.assign(JSON.parse(JSON.stringify(v)),{temperatureHistory:generateTemperatureHistory(v.maxTemp,v.tempTrend,v.productType)});}return null;},
     sortByRisk:async()=>{mockState.vehicles.sort((a,b)=>b.riskScore-a.riskScore);return JSON.parse(JSON.stringify(mockState.vehicles));},
-    updateStatus:async(id,status,latestRecord)=>{const v=mockState.vehicles.find(x=>x.id===id);if(v){v.status=status;if(latestRecord){v.latestRecord=latestRecord;}vehicleUpdateListeners.forEach(cb=>cb(JSON.parse(JSON.stringify(v))));return JSON.parse(JSON.stringify(v));}return null;},
+    updateStatus:async(id,status,latestRecord)=>{const v=mockState.vehicles.find(x=>x.id===id);if(v){v.status=status;if(latestRecord){v.latestRecord=latestRecord;}vehicleUpdateListeners.forEach(cb=>cb(JSON.parse(JSON.stringify(v))));saveRecords(mockState.records);return JSON.parse(JSON.stringify(v));}return null;},
     onUpdated:(cb)=>{setInterval(()=>{mockState.vehicles=mockState.vehicles.map(v=>{if(v.etaMinutes>0)return Object.assign({},v,{etaMinutes:v.etaMinutes-1,eta:new Date(Date.now()+(v.etaMinutes-1)*60000)});return v;});cb(JSON.parse(JSON.stringify(mockState.vehicles)));},60000);},
     onSelected:(cb)=>{detailListeners.push(cb);if(mockState.detailVehicleId)cb(mockState.detailVehicleId);},
     onVehicleUpdated:(cb)=>{vehicleUpdateListeners.push(cb);}
   },
   records:{
-    create:async(rec)=>{const r=Object.assign({id:'REC'+Date.now(),createdAt:new Date().toISOString()},rec);mockState.records.unshift(r);recordUpdateListeners.forEach(cb=>cb(JSON.parse(JSON.stringify(mockState.records))));return r;},
+    create:async(rec)=>{const r=Object.assign({id:'REC'+Date.now(),review:null,createdAt:new Date().toISOString()},rec);mockState.records.unshift(r);saveRecords(mockState.records);syncVehiclesLatestRecord(mockState.vehicles,mockState.records);recordUpdateListeners.forEach(cb=>cb(JSON.parse(JSON.stringify(mockState.records))));vehicleUpdateListeners.forEach(cb=>cb(JSON.parse(JSON.stringify(mockState.vehicles.find(x=>x.id===r.vehicleId)))));return r;},
     getAll:async()=>JSON.parse(JSON.stringify(mockState.records)),
     getByVehicleId:async(vehicleId)=>JSON.parse(JSON.stringify(mockState.records.filter(r=>r.vehicleId===vehicleId))),
+    updateReview:async(recordId,reviewData)=>{const idx=mockState.records.findIndex(r=>r.id===recordId);if(idx===-1)return null;mockState.records[idx]=Object.assign({},mockState.records[idx],{review:Object.assign({},reviewData,{reviewedAt:new Date().toISOString()})});saveRecords(mockState.records);syncVehiclesLatestRecord(mockState.vehicles,mockState.records);const updated=mockState.records[idx];recordUpdateListeners.forEach(cb=>cb(JSON.parse(JSON.stringify(mockState.records))));vehicleUpdateListeners.forEach(cb=>cb(JSON.parse(JSON.stringify(mockState.vehicles.find(x=>x.id===updated.vehicleId)))));return updated;},
     onInit:(cb)=>{recordInitListeners.push(cb);if(mockState.recordVehicleId)cb(mockState.recordVehicleId);},
     onCreated:(cb)=>{recordUpdateListeners.push(cb);},
     onUpdated:(cb)=>{recordUpdateListeners.push(cb);}

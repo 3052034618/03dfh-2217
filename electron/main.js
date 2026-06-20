@@ -12,6 +12,59 @@ let historyWindow = null;
 let vehicles = [];
 let records = [];
 
+function getRecordsFilePath() {
+  try {
+    const userDataPath = app.getPath('userData');
+    if (!fs.existsSync(userDataPath)) {
+      fs.mkdirSync(userDataPath, { recursive: true });
+    }
+    return path.join(userDataPath, 'records.json');
+  } catch (e) {
+    return path.join(__dirname, '..', 'records.json');
+  }
+}
+
+function loadRecords() {
+  try {
+    const fp = getRecordsFilePath();
+    if (fs.existsSync(fp)) {
+      const raw = fs.readFileSync(fp, 'utf-8');
+      if (raw && raw.trim()) {
+        records = JSON.parse(raw);
+      }
+    }
+  } catch (e) {
+    console.warn('[Records] 加载持久化记录失败，使用空列表:', e.message);
+    records = [];
+  }
+}
+
+function saveRecords() {
+  try {
+    const fp = getRecordsFilePath();
+    fs.writeFileSync(fp, JSON.stringify(records, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('[Records] 保存持久化记录失败:', e.message);
+  }
+}
+
+function syncVehiclesLatestRecord() {
+  const vehicleRecordMap = {};
+  records.forEach(r => {
+    if (!vehicleRecordMap[r.vehicleId] || new Date(r.createdAt) > new Date(vehicleRecordMap[r.vehicleId].createdAt)) {
+      vehicleRecordMap[r.vehicleId] = r;
+    }
+  });
+  vehicles.forEach(v => {
+    if (vehicleRecordMap[v.id]) {
+      v.latestRecord = vehicleRecordMap[v.id];
+      if (v.status === undefined || v.status !== 'received') {
+        v.status = 'received';
+      }
+    }
+  });
+}
+
 function detectMode() {
   if (process.env.NODE_ENV === 'development') return true;
   const distPath = path.join(__dirname, '..', 'dist');
@@ -183,7 +236,10 @@ function createHistoryWindow() {
 
 app.whenReady().then(() => {
   console.log(`[Electron] Mode: ${isDev ? 'Development' : 'Production'}`);
+  console.log(`[Electron] Records file: ${getRecordsFilePath()}`);
+  loadRecords();
   vehicles = generateMockVehicles();
+  syncVehiclesLatestRecord();
   createMainWindow();
 
   app.on('activate', () => {
@@ -194,16 +250,19 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  saveRecords();
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
 ipcMain.handle('vehicles:getAll', () => {
+  syncVehiclesLatestRecord();
   return vehicles;
 });
 
 ipcMain.handle('vehicles:getById', (_, id) => {
+  syncVehiclesLatestRecord();
   const vehicle = vehicles.find(v => v.id === id);
   if (vehicle) {
     return {
@@ -231,6 +290,7 @@ ipcMain.handle('vehicles:updateStatus', (_, id, status, latestRecord) => {
     if (latestRecord) {
       vehicle.latestRecord = latestRecord;
     }
+    saveRecords();
     mainWindow && mainWindow.webContents.send('vehicles:updated', vehicles);
     detailWindow && detailWindow.webContents.send('vehicle:updated', vehicle);
     return vehicle;
@@ -242,12 +302,17 @@ ipcMain.handle('records:create', (_, record) => {
   const newRecord = {
     id: `REC${Date.now()}`,
     ...record,
+    review: null,
     createdAt: new Date().toISOString()
   };
   records.unshift(newRecord);
+  saveRecords();
+  syncVehiclesLatestRecord();
+  mainWindow && mainWindow.webContents.send('vehicles:updated', vehicles);
   mainWindow && mainWindow.webContents.send('records:created', newRecord);
   historyWindow && historyWindow.webContents.send('records:updated', records);
   detailWindow && detailWindow.webContents.send('record:created', newRecord);
+  detailWindow && detailWindow.webContents.send('vehicle:updated', vehicles.find(v => v.id === newRecord.vehicleId));
   return newRecord;
 });
 
@@ -257,6 +322,26 @@ ipcMain.handle('records:getAll', () => {
 
 ipcMain.handle('records:getByVehicleId', (_, vehicleId) => {
   return records.filter(r => r.vehicleId === vehicleId);
+});
+
+ipcMain.handle('records:updateReview', (_, recordId, reviewData) => {
+  const idx = records.findIndex(r => r.id === recordId);
+  if (idx === -1) return null;
+  records[idx] = {
+    ...records[idx],
+    review: {
+      ...reviewData,
+      reviewedAt: new Date().toISOString()
+    }
+  };
+  saveRecords();
+  syncVehiclesLatestRecord();
+  const updatedRecord = records[idx];
+  mainWindow && mainWindow.webContents.send('vehicles:updated', vehicles);
+  historyWindow && historyWindow.webContents.send('records:updated', records);
+  detailWindow && detailWindow.webContents.send('record:created', updatedRecord);
+  detailWindow && detailWindow.webContents.send('vehicle:updated', vehicles.find(v => v.id === updatedRecord.vehicleId));
+  return updatedRecord;
 });
 
 ipcMain.on('window:openDetail', (_, vehicleId) => {

@@ -155,17 +155,7 @@ export default function App() {
     setRecord(result);
     setSubmitted(true);
 
-    const latestRecordSummary = {
-      id: result.id,
-      disposalDecision: result.disposalDecision,
-      disposalDecisionLabel: result.disposalDecisionLabel,
-      spotTemps: { max: result.spotTemps.max },
-      isOverThreshold: result.isOverThreshold,
-      tempDiff: result.tempDiff,
-      createdAt: result.createdAt
-    };
-
-    await vehiclesAPI.updateStatus(vehicle.id, 'received', latestRecordSummary);
+    await vehiclesAPI.updateStatus(vehicle.id, 'received', result);
   };
 
   const handleClose = () => {
