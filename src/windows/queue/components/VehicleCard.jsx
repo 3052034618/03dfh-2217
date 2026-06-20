@@ -10,17 +10,34 @@ const TREND_ICONS = {
 const STATUS_STYLES = {
   en_route: { bg: 'rgba(59, 130, 246, 0.15)', color: 'var(--status-enroute)' },
   approaching: { bg: 'rgba(139, 92, 246, 0.15)', color: 'var(--status-approaching)' },
-  waiting: { bg: 'rgba(107, 114, 128, 0.15)', color: 'var(--status-waiting)' }
+  waiting: { bg: 'rgba(107, 114, 128, 0.15)', color: 'var(--status-waiting)' },
+  received: { bg: 'rgba(34, 197, 94, 0.15)', color: 'var(--risk-normal)' }
 };
 
 const STATUS_LABELS = {
   en_route: '在途',
   approaching: '即将到达',
-  waiting: '等待入场'
+  waiting: '等待入场',
+  received: '已收货'
+};
+
+const DISPOSAL_COLORS = {
+  accept: 'var(--risk-normal)',
+  conditional: 'var(--risk-attention)',
+  quarantine: 'var(--risk-warning)',
+  reject: 'var(--risk-critical)'
 };
 
 export default function VehicleCard({ vehicle, priority, onViewDetail, onStartReceiving }) {
-  const priorityStyle = priority <= 3
+  const isReceived = vehicle.status === 'received';
+
+  const priorityStyle = isReceived
+    ? {
+        bg: 'linear-gradient(135deg, #22c55e, #16a34a)',
+        text: 'white',
+        label: '已收货'
+      }
+    : priority <= 3
     ? {
         bg: 'linear-gradient(135deg, #ef4444, #dc2626)',
         text: 'white',
@@ -97,7 +114,9 @@ export default function VehicleCard({ vehicle, priority, onViewDetail, onStartRe
           justifyContent: 'center',
           fontWeight: 700
         }}>
-          <div style={{ fontSize: 20, lineHeight: 1 }}>#{priority}</div>
+          <div style={{ fontSize: isReceived ? 18 : 20, lineHeight: 1 }}>
+            {isReceived ? '✓' : `#${priority}`}
+          </div>
           <div style={{ fontSize: 10, marginTop: 4, opacity: 0.9 }}>{priorityStyle.label}</div>
         </div>
       </div>
@@ -196,33 +215,62 @@ export default function VehicleCard({ vehicle, priority, onViewDetail, onStartRe
       </div>
 
       <div>
-        <div style={{
-          fontSize: 16,
-          fontWeight: 600,
-          color: vehicle.etaMinutes <= 10 ? 'var(--accent-blue)' : 'var(--text-primary)',
-          fontFamily: 'monospace',
-          marginBottom: 2
-        }}>
-          {etaTime}
-        </div>
-        <div style={{
-          fontSize: 11,
-          color: vehicle.etaMinutes <= 10 ? 'var(--accent-blue)' : 'var(--text-muted)'
-        }}>
-          {formatEta(vehicle.etaMinutes)}
-        </div>
-        {vehicle.assignedDock && (
-          <div style={{
-            marginTop: 4,
-            padding: '2px 8px',
-            borderRadius: 4,
-            background: 'rgba(79, 195, 247, 0.15)',
-            color: 'var(--accent-blue)',
-            fontSize: 11,
-            display: 'inline-block'
-          }}>
-            月台 #{vehicle.assignedDock}
-          </div>
+        {isReceived && vehicle.latestRecord ? (
+          <>
+            <div style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: DISPOSAL_COLORS[vehicle.latestRecord.disposalDecision],
+              marginBottom: 4
+            }}>
+              {vehicle.latestRecord.disposalDecisionLabel}
+            </div>
+            <div style={{
+              fontSize: 11,
+              color: vehicle.latestRecord.isOverThreshold ? 'var(--risk-critical)' : 'var(--text-muted)'
+            }}>
+              抽检 {vehicle.latestRecord.spotTemps.max}℃
+              {vehicle.latestRecord.isOverThreshold && ` · 超${vehicle.latestRecord.tempDiff}℃`}
+            </div>
+            <div style={{
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              marginTop: 2
+            }}>
+              {new Date(vehicle.latestRecord.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 处置
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{
+              fontSize: 16,
+              fontWeight: 600,
+              color: vehicle.etaMinutes <= 10 ? 'var(--accent-blue)' : 'var(--text-primary)',
+              fontFamily: 'monospace',
+              marginBottom: 2
+            }}>
+              {etaTime}
+            </div>
+            <div style={{
+              fontSize: 11,
+              color: vehicle.etaMinutes <= 10 ? 'var(--accent-blue)' : 'var(--text-muted)'
+            }}>
+              {formatEta(vehicle.etaMinutes)}
+            </div>
+            {vehicle.assignedDock && (
+              <div style={{
+                marginTop: 4,
+                padding: '2px 8px',
+                borderRadius: 4,
+                background: 'rgba(79, 195, 247, 0.15)',
+                color: 'var(--accent-blue)',
+                fontSize: 11,
+                display: 'inline-block'
+              }}>
+                月台 #{vehicle.assignedDock}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -233,12 +281,14 @@ export default function VehicleCard({ vehicle, priority, onViewDetail, onStartRe
         >
           详情
         </button>
-        <button
-          className={`btn btn-sm ${vehicle.riskLevel === 'critical' ? 'btn-danger' : 'btn-primary'}`}
-          onClick={onStartReceiving}
-        >
-          开始收货
-        </button>
+        {!isReceived && (
+          <button
+            className={`btn btn-sm ${vehicle.riskLevel === 'critical' ? 'btn-danger' : 'btn-primary'}`}
+            onClick={onStartReceiving}
+          >
+            开始收货
+          </button>
+        )}
       </div>
     </div>
   );

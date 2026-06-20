@@ -105,6 +105,14 @@ export default function App() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
           <StatsBar stats={stats} />
+          <button
+            className="btn btn-outline"
+            onClick={() => ensureBridge().window.openHistory()}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <span>📋</span>
+            今日处置记录
+          </button>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 24, fontWeight: 300, color: 'var(--accent-blue)', fontFamily: 'monospace' }}>
               {formatTime(currentTime)}
@@ -188,15 +196,13 @@ export default function App() {
         padding: '4px 24px 24px'
       }}>
         {filteredVehicles.length === 0 ? (
-          <div style={{
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--text-muted)'
-          }}>
-            暂无符合条件的车辆
-          </div>
+          <EmptyState
+            icon={filter === 'all' ? '🚚' : '🔍'}
+            title={filter === 'all' ? '今天没有待处理的车辆' : `没有「${RISK_FILTERS.find(f => f.key === filter)?.label || ''}」等级的车辆`}
+            description={filter === 'all' ? '暂无车辆在途或等待入场，休息一下吧' : '试试调整筛选条件，或者'}
+            actionText={filter !== 'all' ? '查看全部车辆' : null}
+            onAction={filter !== 'all' ? () => setFilter('all') : null}
+          />
         ) : (
           filteredVehicles.map((vehicle, index) => (
             <VehicleCard
@@ -207,6 +213,37 @@ export default function App() {
               onStartReceiving={() => handleStartReceiving(vehicle.id)}
             />
           ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ icon, title, description, actionText, onAction }) {
+  return (
+    <div style={{
+      height: '100%', minHeight: 350,
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      gap: 14
+    }}>
+      <div style={{ fontSize: 56, opacity: 0.4 }}>{icon}</div>
+      <div style={{ fontSize: 17, fontWeight: 500, color: 'var(--text-secondary)' }}>{title}</div>
+      <div style={{ fontSize: 13, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+        {description}
+        {actionText && onAction && (
+          <button
+            onClick={onAction}
+            style={{
+              color: 'var(--accent-blue)',
+              background: 'none', border: 'none',
+              cursor: 'pointer', fontSize: 13,
+              textDecoration: 'underline',
+              padding: 0
+            }}
+          >
+            {actionText}
+          </button>
         )}
       </div>
     </div>

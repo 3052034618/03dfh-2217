@@ -49,29 +49,33 @@ function generateTemperatureHistory(maxTemp,tempTrend,productType){
 }
 
 const mockState={vehicles:generateMockVehicles(),records:[],detailVehicleId:null,recordVehicleId:null};
-const detailListeners=[];const recordInitListeners=[];
+const detailListeners=[];const recordInitListeners=[];const recordUpdateListeners=[];const vehicleUpdateListeners=[];
 
 const mockAPI={
   vehicles:{
     getAll:async()=>JSON.parse(JSON.stringify(mockState.vehicles)),
     getById:async(id)=>{const v=mockState.vehicles.find(x=>x.id===id);if(v){return Object.assign(JSON.parse(JSON.stringify(v)),{temperatureHistory:generateTemperatureHistory(v.maxTemp,v.tempTrend,v.productType)});}return null;},
     sortByRisk:async()=>{mockState.vehicles.sort((a,b)=>b.riskScore-a.riskScore);return JSON.parse(JSON.stringify(mockState.vehicles));},
-    updateStatus:async(id,status)=>{const v=mockState.vehicles.find(x=>x.id===id);if(v){v.status=status;return JSON.parse(JSON.stringify(v));}return null;},
+    updateStatus:async(id,status,latestRecord)=>{const v=mockState.vehicles.find(x=>x.id===id);if(v){v.status=status;if(latestRecord){v.latestRecord=latestRecord;}vehicleUpdateListeners.forEach(cb=>cb(JSON.parse(JSON.stringify(v))));return JSON.parse(JSON.stringify(v));}return null;},
     onUpdated:(cb)=>{setInterval(()=>{mockState.vehicles=mockState.vehicles.map(v=>{if(v.etaMinutes>0)return Object.assign({},v,{etaMinutes:v.etaMinutes-1,eta:new Date(Date.now()+(v.etaMinutes-1)*60000)});return v;});cb(JSON.parse(JSON.stringify(mockState.vehicles)));},60000);},
     onSelected:(cb)=>{detailListeners.push(cb);if(mockState.detailVehicleId)cb(mockState.detailVehicleId);},
-    onVehicleUpdated:()=>{}
+    onVehicleUpdated:(cb)=>{vehicleUpdateListeners.push(cb);}
   },
   records:{
-    create:async(rec)=>{const r=Object.assign({id:'REC'+Date.now(),createdAt:new Date().toISOString()},rec);mockState.records.unshift(r);return r;},
+    create:async(rec)=>{const r=Object.assign({id:'REC'+Date.now(),createdAt:new Date().toISOString()},rec);mockState.records.unshift(r);recordUpdateListeners.forEach(cb=>cb(JSON.parse(JSON.stringify(mockState.records))));return r;},
     getAll:async()=>JSON.parse(JSON.stringify(mockState.records)),
+    getByVehicleId:async(vehicleId)=>JSON.parse(JSON.stringify(mockState.records.filter(r=>r.vehicleId===vehicleId))),
     onInit:(cb)=>{recordInitListeners.push(cb);if(mockState.recordVehicleId)cb(mockState.recordVehicleId);},
-    onCreated:()=>{}
+    onCreated:(cb)=>{recordUpdateListeners.push(cb);},
+    onUpdated:(cb)=>{recordUpdateListeners.push(cb);}
   },
   window:{
     openDetail:(id)=>{mockState.detailVehicleId=id;const w=window.open('detail.html','车辆详情','width=960,height=720');if(w){w.mockVehicleId=id;setTimeout(()=>{detailListeners.forEach(cb=>cb(id));},300);}detailListeners.forEach(cb=>cb(id));},
     openRecord:(id)=>{mockState.recordVehicleId=id;const w=window.open('record.html','收货记录','width=720,height=800');if(w){w.mockVehicleId=id;setTimeout(()=>{recordInitListeners.forEach(cb=>cb(id));},300);}recordInitListeners.forEach(cb=>cb(id));},
+    openHistory:()=>{window.open('history.html','今日处置记录','width=1100,height=720');},
     closeDetail:()=>{try{window.close();}catch(e){}},
-    closeRecord:()=>{try{window.close();}catch(e){}}
+    closeRecord:()=>{try{window.close();}catch(e){}},
+    closeHistory:()=>{try{window.close();}catch(e){}}
   }
 };
 window.electronAPI=mockAPI;window.mockAPI=mockAPI;window.mockState=mockState;

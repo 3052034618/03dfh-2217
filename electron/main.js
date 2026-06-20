@@ -7,6 +7,7 @@ const { generateMockVehicles, generateTemperatureHistory } = require('./mockData
 let mainWindow = null;
 let detailWindow = null;
 let recordWindow = null;
+let historyWindow = null;
 
 let vehicles = [];
 let records = [];
@@ -67,6 +68,10 @@ function createMainWindow() {
     if (recordWindow) {
       recordWindow.close();
       recordWindow = null;
+    }
+    if (historyWindow) {
+      historyWindow.close();
+      historyWindow = null;
     }
     app.quit();
   });
@@ -145,6 +150,37 @@ function createRecordWindow(vehicleId) {
   });
 }
 
+function createHistoryWindow() {
+  if (historyWindow) {
+    historyWindow.focus();
+    return;
+  }
+
+  historyWindow = new BrowserWindow({
+    width: 1100,
+    height: 720,
+    title: '今日处置记录',
+    backgroundColor: '#0f1419',
+    parent: mainWindow,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+
+  historyWindow.loadURL(getWindowUrl('history'));
+
+  historyWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error(`[History Window] Failed to load: ${errorCode} - ${errorDescription}`);
+  });
+
+  historyWindow.on('closed', () => {
+    historyWindow = null;
+  });
+}
+
 app.whenReady().then(() => {
   console.log(`[Electron] Mode: ${isDev ? 'Development' : 'Production'}`);
   vehicles = generateMockVehicles();
@@ -188,10 +224,13 @@ ipcMain.handle('vehicles:sortByRisk', () => {
   return vehicles;
 });
 
-ipcMain.handle('vehicles:updateStatus', (_, id, status) => {
+ipcMain.handle('vehicles:updateStatus', (_, id, status, latestRecord) => {
   const vehicle = vehicles.find(v => v.id === id);
   if (vehicle) {
     vehicle.status = status;
+    if (latestRecord) {
+      vehicle.latestRecord = latestRecord;
+    }
     mainWindow && mainWindow.webContents.send('vehicles:updated', vehicles);
     detailWindow && detailWindow.webContents.send('vehicle:updated', vehicle);
     return vehicle;
@@ -207,11 +246,17 @@ ipcMain.handle('records:create', (_, record) => {
   };
   records.unshift(newRecord);
   mainWindow && mainWindow.webContents.send('records:created', newRecord);
+  historyWindow && historyWindow.webContents.send('records:updated', records);
+  detailWindow && detailWindow.webContents.send('record:created', newRecord);
   return newRecord;
 });
 
 ipcMain.handle('records:getAll', () => {
   return records;
+});
+
+ipcMain.handle('records:getByVehicleId', (_, vehicleId) => {
+  return records.filter(r => r.vehicleId === vehicleId);
 });
 
 ipcMain.on('window:openDetail', (_, vehicleId) => {
@@ -220,6 +265,10 @@ ipcMain.on('window:openDetail', (_, vehicleId) => {
 
 ipcMain.on('window:openRecord', (_, vehicleId) => {
   createRecordWindow(vehicleId);
+});
+
+ipcMain.on('window:openHistory', () => {
+  createHistoryWindow();
 });
 
 ipcMain.on('window:closeDetail', () => {
@@ -231,5 +280,11 @@ ipcMain.on('window:closeDetail', () => {
 ipcMain.on('window:closeRecord', () => {
   if (recordWindow) {
     recordWindow.close();
+  }
+});
+
+ipcMain.on('window:closeHistory', () => {
+  if (historyWindow) {
+    historyWindow.close();
   }
 });

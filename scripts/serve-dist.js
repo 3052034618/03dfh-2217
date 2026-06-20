@@ -47,6 +47,7 @@ server.listen(PORT, () => {
   console.log(`  到车队列: http://localhost:${PORT}/queue.html`);
   console.log(`  车辆详情: http://localhost:${PORT}/detail.html`);
   console.log(`  收货记录: http://localhost:${PORT}/record.html`);
+  console.log(`  今日处置: http://localhost:${PORT}/history.html`);
   console.log(`  根路径重定向: http://localhost:${PORT}/`);
   console.log('========================================\n');
 });

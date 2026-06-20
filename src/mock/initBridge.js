@@ -129,6 +129,8 @@ const mockState = {
 
 const detailListeners = [];
 const recordInitListeners = [];
+const recordUpdateListeners = [];
+const vehicleUpdateListeners = [];
 
 const mockAPI = {
   vehicles: {
@@ -144,9 +146,16 @@ const mockAPI = {
       mockState.vehicles.sort((a, b) => b.riskScore - a.riskScore);
       return JSON.parse(JSON.stringify(mockState.vehicles));
     },
-    updateStatus: async (id, status) => {
+    updateStatus: async (id, status, latestRecord) => {
       const v = mockState.vehicles.find(x => x.id === id);
-      if (v) { v.status = status; return JSON.parse(JSON.stringify(v)); }
+      if (v) {
+        v.status = status;
+        if (latestRecord) {
+          v.latestRecord = latestRecord;
+        }
+        vehicleUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(v))));
+        return JSON.parse(JSON.stringify(v));
+      }
       return null;
     },
     onUpdated: (cb) => {
@@ -165,15 +174,19 @@ const mockAPI = {
         cb(window.mockVehicleId);
       }
     },
-    onVehicleUpdated: () => {}
+    onVehicleUpdated: (cb) => {
+      vehicleUpdateListeners.push(cb);
+    }
   },
   records: {
     create: async (rec) => {
       const r = { id: 'REC' + Date.now(), ...rec, createdAt: new Date().toISOString() };
       mockState.records.unshift(r);
+      recordUpdateListeners.forEach(cb => cb(JSON.parse(JSON.stringify(mockState.records))));
       return r;
     },
     getAll: async () => JSON.parse(JSON.stringify(mockState.records)),
+    getByVehicleId: async (vehicleId) => JSON.parse(JSON.stringify(mockState.records.filter(r => r.vehicleId === vehicleId))),
     onInit: (cb) => {
       recordInitListeners.push(cb);
       if (mockState.recordVehicleId) cb(mockState.recordVehicleId);
@@ -181,7 +194,12 @@ const mockAPI = {
         cb(window.mockVehicleId);
       }
     },
-    onCreated: () => {}
+    onCreated: (cb) => {
+      recordUpdateListeners.push(cb);
+    },
+    onUpdated: (cb) => {
+      recordUpdateListeners.push(cb);
+    }
   },
   window: {
     openDetail: (id) => {
@@ -196,8 +214,12 @@ const mockAPI = {
       if (w) { w.mockVehicleId = id; setTimeout(() => recordInitListeners.forEach(cb => cb(id)), 300); }
       recordInitListeners.forEach(cb => cb(id));
     },
+    openHistory: () => {
+      if (typeof window !== 'undefined') window.open('history.html', '今日处置记录', 'width=1100,height=720');
+    },
     closeDetail: () => { try { window.close(); } catch (e) {} },
-    closeRecord: () => { try { window.close(); } catch (e) {} }
+    closeRecord: () => { try { window.close(); } catch (e) {} },
+    closeHistory: () => { try { window.close(); } catch (e) {} }
   }
 };
 

@@ -5,6 +5,85 @@ import {
 } from 'recharts';
 import { ensureBridge } from '../../mock/initBridge.js';
 
+const SENSITIVE_PRODUCTS = ['VACCINE', 'ICE_CREAM', 'FROZEN_SEAFOOD'];
+
+const TREND_SPEED = {
+  rising_fast: { label: '快速上升', desc: '30分钟内升温超过3℃，制冷效率下降明显', severity: 'critical' },
+  rising: { label: '缓慢上升', desc: '30分钟内升温1-3℃，需持续关注', severity: 'warning' },
+  stable: { label: '温度稳定', desc: '温度波动在±1℃以内，制冷正常', severity: 'normal' },
+  falling: { label: '温度下降', desc: '温度持续回落，制冷正常', severity: 'normal' }
+};
+
+function generateRiskReasons(vehicle) {
+  const reasons = [];
+  const tempDiff = vehicle.maxTemp - vehicle.thresholdTemp;
+
+  if (tempDiff > 5) {
+    reasons.push({
+      icon: '🔥',
+      title: `温度严重超标 ${tempDiff.toFixed(1)}℃`,
+      desc: `在途最高温 ${vehicle.maxTemp}℃，远超阈值 ${vehicle.thresholdTemp}℃，货品已进入危险温区`,
+      severity: 'critical',
+      weight: 50
+    });
+  } else if (tempDiff > 3) {
+    reasons.push({
+      icon: '⚠️',
+      title: `温度超标 ${tempDiff.toFixed(1)}℃`,
+      desc: `在途最高温 ${vehicle.maxTemp}℃，超过阈值 ${vehicle.thresholdTemp}℃`,
+      severity: 'warning',
+      weight: 35
+    });
+  } else if (tempDiff > 0) {
+    reasons.push({
+      icon: '🌡️',
+      title: `温度略超 ${tempDiff.toFixed(1)}℃`,
+      desc: `在途最高温 ${vehicle.maxTemp}℃，略高于阈值 ${vehicle.thresholdTemp}℃`,
+      severity: 'warning',
+      weight: 20
+    });
+  } else if (tempDiff > -2) {
+    reasons.push({
+      icon: '📊',
+      title: '温度接近阈值',
+      desc: `在途最高温 ${vehicle.maxTemp}℃，距阈值 ${vehicle.thresholdTemp}℃ 仅 ${Math.abs(tempDiff).toFixed(1)}℃`,
+      severity: 'attention',
+      weight: 5
+    });
+  }
+
+  const trendInfo = TREND_SPEED[vehicle.tempTrend];
+  if (vehicle.tempTrend === 'rising_fast') {
+    reasons.push({
+      icon: '📈',
+      title: `升温趋势：${trendInfo.label}`,
+      desc: trendInfo.desc,
+      severity: 'critical',
+      weight: 35
+    });
+  } else if (vehicle.tempTrend === 'rising') {
+    reasons.push({
+      icon: '↗️',
+      title: `升温趋势：${trendInfo.label}`,
+      desc: trendInfo.desc,
+      severity: 'warning',
+      weight: 20
+    });
+  }
+
+  if (SENSITIVE_PRODUCTS.includes(vehicle.productType)) {
+    reasons.push({
+      icon: '💊',
+      title: `高敏感货品：${vehicle.productName}`,
+      desc: `${vehicle.productName} 对温度波动极其敏感，轻微回温即可能影响品质`,
+      severity: 'warning',
+      weight: vehicle.productType === 'VACCINE' ? 15 : vehicle.productType === 'ICE_CREAM' ? 10 : 8
+    });
+  }
+
+  return reasons.sort((a, b) => b.weight - a.weight);
+}
+
 const ACTION_ICONS = {
   dock: '🅿️',
   equipment: '🌡️',
@@ -73,20 +152,37 @@ function generateSuggestedActions(riskLevel, productType, assignedDock, standard
 export default function App() {
   const [vehicle, setVehicle] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [latestRecord, setLatestRecord] = useState(null);
+  const [vehicleRecords, setVehicleRecords] = useState([]);
 
   useEffect(() => {
     const bridge = ensureBridge();
-    const { vehicles: vehiclesAPI } = bridge;
+    const { vehicles: vehiclesAPI, records: recordsAPI } = bridge;
     const handleSelected = async (id) => {
       setLoading(true);
       const data = await vehiclesAPI.getById(id);
       setVehicle(data);
+      setLatestRecord(data?.latestRecord || null);
+
+      const recs = await recordsAPI.getByVehicleId(id);
+      setVehicleRecords(recs);
+
       setLoading(false);
     };
 
     vehiclesAPI.onSelected(handleSelected);
     vehiclesAPI.onVehicleUpdated((v) => {
       setVehicle(prev => prev && prev.id === v.id ? { ...prev, ...v } : prev);
+      if (v.latestRecord) {
+        setLatestRecord(v.latestRecord);
+      }
+    });
+
+    recordsAPI.onCreated((rec) => {
+      if (vehicle && rec.vehicleId === vehicle.id) {
+        setLatestRecord(rec);
+        setVehicleRecords(prev => [rec, ...prev]);
+      }
     });
 
     if (window.mockVehicleId) {
@@ -94,7 +190,7 @@ export default function App() {
     }
 
     return () => {};
-  }, []);
+  }, [vehicle]);
 
   const handleClose = () => {
     ensureBridge().window.closeDetail();
@@ -238,6 +334,8 @@ export default function App() {
           </div>
         </div>
 
+        <RiskReasonCard vehicle={vehicle} />
+
         <div className="card" style={{ marginBottom: 16 }}>
           <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: 'var(--accent-blue)' }}>
             📈 最近30分钟温度趋势
@@ -295,6 +393,10 @@ export default function App() {
             </ResponsiveContainer>
           </div>
         </div>
+
+        {latestRecord && (
+          <LatestRecordCard record={latestRecord} />
+        )}
 
         <div className="card">
           <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: 'var(--accent-blue)' }}>
@@ -369,6 +471,155 @@ export default function App() {
             ))}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function RiskReasonCard({ vehicle }) {
+  const reasons = generateRiskReasons(vehicle);
+  if (reasons.length === 0) return null;
+
+  const SEVERITY_COLORS = {
+    critical: { bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.4)', text: 'var(--risk-critical)' },
+    warning: { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.3)', text: 'var(--risk-warning)' },
+    attention: { bg: 'rgba(234, 179, 8, 0.10)', border: 'rgba(234, 179, 8, 0.3)', text: 'var(--risk-attention)' },
+    normal: { bg: 'rgba(34, 197, 94, 0.10)', border: 'rgba(34, 197, 94, 0.3)', text: 'var(--risk-normal)' }
+  };
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: 'var(--accent-blue)' }}>
+        ⚠️ 风险原因说明
+      </h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {reasons.map((reason, idx) => {
+          const style = SEVERITY_COLORS[reason.severity] || SEVERITY_COLORS.normal;
+          return (
+            <div
+              key={idx}
+              style={{
+                padding: '12px 14px',
+                borderRadius: 8,
+                background: style.bg,
+                border: `1px solid ${style.border}`,
+                display: 'flex',
+                gap: 12,
+                alignItems: 'flex-start'
+              }}
+            >
+              <div style={{ fontSize: 20, flexShrink: 0 }}>{reason.icon}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{
+                  fontSize: 13, fontWeight: 600,
+                  color: style.text,
+                  marginBottom: 2
+                }}>
+                  {reason.title}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {reason.desc}
+                </div>
+              </div>
+              <div style={{
+                fontSize: 10, fontWeight: 700,
+                padding: '2px 8px', borderRadius: 4,
+                background: style.border,
+                color: style.text
+              }}>
+                +{reason.weight}分
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{
+        marginTop: 12, paddingTop: 12,
+        borderTop: '1px dashed var(--border-color)',
+        fontSize: 12, color: 'var(--text-muted)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+      }}>
+        <span>风险评分合计：<strong style={{ color: vehicle.riskScore >= 60 ? 'var(--risk-critical)' : vehicle.riskScore >= 35 ? 'var(--risk-warning)' : 'var(--text-primary)' }}>{vehicle.riskScore}</strong> / 100 分</span>
+        <span>优先级：{vehicle.riskLevel === 'critical' ? 'P0 最高优先' : vehicle.riskLevel === 'warning' ? 'P1 高优先' : vehicle.riskLevel === 'attention' ? 'P2 关注' : 'P3 正常'}</span>
+      </div>
+    </div>
+  );
+}
+
+function LatestRecordCard({ record }) {
+  const DISPOSAL_COLORS = {
+    accept: 'var(--risk-normal)',
+    conditional: 'var(--risk-attention)',
+    quarantine: 'var(--risk-warning)',
+    reject: 'var(--risk-critical)'
+  };
+
+  const time = new Date(record.createdAt);
+  const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 14, color: 'var(--accent-blue)' }}>
+        ✅ 最新收货记录
+        <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 8 }}>
+          生成于 {record.arrivalDate} {timeStr} · {record.id}
+        </span>
+      </h3>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>处置决定</div>
+          <div style={{
+            fontSize: 14, fontWeight: 600,
+            color: DISPOSAL_COLORS[record.disposalDecision]
+          }}>
+            {record.disposalDecisionLabel}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>抽检最高温</div>
+          <div style={{
+            fontSize: 16, fontWeight: 700, fontFamily: 'monospace',
+            color: record.spotTemps.max > record.thresholdTemp ? 'var(--risk-critical)' : 'var(--risk-normal)'
+          }}>
+            {record.spotTemps.max}℃
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>外包装状态</div>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>{record.packageConditionLabel}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>收货员</div>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>{record.receiverName}</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        {record.disposalNotes && (
+          <div style={{
+            flex: 1, minWidth: 300,
+            padding: '10px 14px',
+            borderRadius: 6,
+            background: 'var(--bg-secondary)',
+            fontSize: 12, color: 'var(--text-secondary)'
+          }}>
+            <span style={{ color: 'var(--text-muted)' }}>处置说明：</span>
+            {record.disposalNotes}
+          </div>
+        )}
+        {record.packageNotes && (
+          <div style={{
+            flex: 1, minWidth: 300,
+            padding: '10px 14px',
+            borderRadius: 6,
+            background: 'var(--bg-secondary)',
+            fontSize: 12, color: 'var(--text-secondary)'
+          }}>
+            <span style={{ color: 'var(--text-muted)' }}>包装备注：</span>
+            {record.packageNotes}
+          </div>
+        )}
       </div>
     </div>
   );

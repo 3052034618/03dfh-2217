@@ -21,17 +21,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   records: {
     create: (record) => ipcRenderer.invoke('records:create', record),
     getAll: () => ipcRenderer.invoke('records:getAll'),
+    getByVehicleId: (vehicleId) => ipcRenderer.invoke('records:getByVehicleId', vehicleId),
     onInit: (callback) => {
       ipcRenderer.on('record:init', (_, data) => callback(data));
     },
     onCreated: (callback) => {
       ipcRenderer.on('records:created', (_, data) => callback(data));
+    },
+    onUpdated: (callback) => {
+      ipcRenderer.on('records:updated', (_, data) => callback(data));
     }
   },
   window: {
     openDetail: (vehicleId) => ipcRenderer.send('window:openDetail', vehicleId),
     openRecord: (vehicleId) => ipcRenderer.send('window:openRecord', vehicleId),
+    openHistory: () => ipcRenderer.send('window:openHistory'),
     closeDetail: () => ipcRenderer.send('window:closeDetail'),
-    closeRecord: () => ipcRenderer.send('window:closeRecord')
+    closeRecord: () => ipcRenderer.send('window:closeRecord'),
+    closeHistory: () => ipcRenderer.send('window:closeHistory')
   }
 });

@@ -22,7 +22,8 @@ export default defineConfig({
         index: fileURLToPath(new URL('./index.html', import.meta.url)),
         queue: fileURLToPath(new URL('./queue.html', import.meta.url)),
         detail: fileURLToPath(new URL('./detail.html', import.meta.url)),
-        record: fileURLToPath(new URL('./record.html', import.meta.url))
+        record: fileURLToPath(new URL('./record.html', import.meta.url)),
+        history: fileURLToPath(new URL('./history.html', import.meta.url))
       }
     }
   }
