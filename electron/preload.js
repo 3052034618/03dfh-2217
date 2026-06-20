@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+window.__IS_ELECTRON__ = true;
+
 contextBridge.exposeInMainWorld('electronAPI', {
   vehicles: {
     getAll: () => ipcRenderer.invoke('vehicles:getAll'),

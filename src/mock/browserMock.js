@@ -1,3 +1,12 @@
+function isRunningInElectron() {
+  if (typeof window !== 'undefined' && window.electronAPI) return true;
+  if (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.toLowerCase().indexOf('electron') > -1) return true;
+  if (typeof process !== 'undefined' && process.versions && process.versions.electron) return true;
+  return false;
+}
+
+if (!isRunningInElectron()) {
+
 function getProductInfo(code) {
   const PRODUCT_TYPES = [
     { code: 'FROZEN_MEAT', name: '冷冻肉类', standardTemp: -18, threshold: -12 },
@@ -217,6 +226,9 @@ const mockAPI = {
     },
     onSelected: (callback) => {
       detailListeners.push(callback);
+      if (mockState.detailVehicleId) {
+        callback(mockState.detailVehicleId);
+      }
     },
     onVehicleUpdated: () => {}
   },
@@ -242,56 +254,37 @@ const mockAPI = {
   window: {
     openDetail: (vehicleId) => {
       mockState.detailVehicleId = vehicleId;
-      detailListeners.forEach(cb => cb(vehicleId));
-      const detailContainer = document.getElementById('detail-window-container');
-      if (detailContainer) {
-        detailContainer.style.display = 'block';
-        loadDetailApp(vehicleId);
-      } else {
-        const w = window.open('', '车辆详情', 'width=960,height=720');
-        if (w) {
-          w.mockAPI = mockAPI;
-          w.mockState = mockState;
-          w.mockVehicleId = vehicleId;
-          w.location = '/src/windows/detail/index.html';
-        }
+      const w = window.open(`detail.html`, '车辆详情', 'width=960,height=720');
+      if (w) {
+        w.mockVehicleId = vehicleId;
+        setTimeout(() => {
+          if (w.electronAPI && w.electronAPI.vehicles) {
+            detailListeners.forEach(cb => cb(vehicleId));
+            try { w.dispatchEvent(new CustomEvent('mock-vehicle-selected', { detail: vehicleId })); } catch (e) {}
+          }
+        }, 300);
       }
+      detailListeners.forEach(cb => cb(vehicleId));
     },
     openRecord: (vehicleId) => {
       mockState.recordVehicleId = vehicleId;
+      const w = window.open(`record.html`, '收货记录', 'width=720,height=800');
+      if (w) {
+        w.mockVehicleId = vehicleId;
+        setTimeout(() => {
+          recordInitListeners.forEach(cb => cb(vehicleId));
+          try { w.dispatchEvent(new CustomEvent('mock-record-init', { detail: vehicleId })); } catch (e) {}
+        }, 300);
+      }
       recordInitListeners.forEach(cb => cb(vehicleId));
-      const recordContainer = document.getElementById('record-window-container');
-      if (recordContainer) {
-        recordContainer.style.display = 'block';
-        loadRecordApp(vehicleId);
-      } else {
-        const w = window.open('', '收货记录', 'width=720,height=800');
-        if (w) {
-          w.mockAPI = mockAPI;
-          w.mockState = mockState;
-          w.mockVehicleId = vehicleId;
-          w.location = '/src/windows/record/index.html';
-        }
-      }
     },
-    closeDetail: () => {
-      const detailContainer = document.getElementById('detail-window-container');
-      if (detailContainer) {
-        detailContainer.style.display = 'none';
-      }
-    },
-    closeRecord: () => {
-      const recordContainer = document.getElementById('record-window-container');
-      if (recordContainer) {
-        recordContainer.style.display = 'none';
-      }
-    }
+    closeDetail: () => { window.close(); },
+    closeRecord: () => { window.close(); }
   }
 };
 
-if (!window.electronAPI) {
-  window.electronAPI = mockAPI;
-}
-
+window.electronAPI = mockAPI;
 window.mockAPI = mockAPI;
 window.mockState = mockState;
+
+}

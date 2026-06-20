@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-
-const { vehicles: vehiclesAPI, records: recordsAPI, window: windowAPI } = window.electronAPI;
+import { ensureBridge } from '../../mock/initBridge.js';
 
 const PACKAGE_CONDITIONS = [
   { value: 'excellent', label: '完好', color: 'var(--risk-normal)' },
@@ -40,6 +39,8 @@ export default function App() {
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
+    const bridge = ensureBridge();
+    const { vehicles: vehiclesAPI, records: recordsAPI } = bridge;
     const handleInit = async (id) => {
       setLoading(true);
       setSubmitted(false);
@@ -100,6 +101,7 @@ export default function App() {
 
   const handleSubmit = async () => {
     if (!validateForm() || !vehicle) return;
+    ensureBridge();
 
     const avgTemp = calcAvgTemp();
     const maxSpot = Math.max(
@@ -147,6 +149,8 @@ export default function App() {
       tempDiff: (maxSpot - vehicle.thresholdTemp).toFixed(1)
     };
 
+    const bridge = ensureBridge();
+    const { records: recordsAPI, vehicles: vehiclesAPI } = bridge;
     const result = await recordsAPI.create(recordData);
     setRecord(result);
     setSubmitted(true);
@@ -155,7 +159,7 @@ export default function App() {
   };
 
   const handleClose = () => {
-    windowAPI.closeRecord();
+    ensureBridge().window.closeRecord();
   };
 
   if (loading && !vehicle) {

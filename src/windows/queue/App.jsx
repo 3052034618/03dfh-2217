@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { ensureBridge } from '../../mock/initBridge.js';
 import VehicleCard from './components/VehicleCard.jsx';
 import StatsBar from './components/StatsBar.jsx';
-
-const { vehicles: vehiclesAPI, window: windowAPI } = window.electronAPI;
 
 const RISK_FILTERS = [
   { key: 'all', label: '全部' },
@@ -25,6 +24,8 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
+    const bridge = ensureBridge();
+    const { vehicles: vehiclesAPI } = bridge;
     const loadData = async () => {
       const data = await vehiclesAPI.getAll();
       setVehicles(data);
@@ -54,11 +55,11 @@ export default function App() {
   };
 
   const handleViewDetail = (id) => {
-    windowAPI.openDetail(id);
+    ensureBridge().window.openDetail(id);
   };
 
   const handleStartReceiving = (id) => {
-    windowAPI.openRecord(id);
+    ensureBridge().window.openRecord(id);
   };
 
   const formatTime = (date) => {

@@ -1,5 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const { pathToFileURL } = require('url');
 const { generateMockVehicles, generateTemperatureHistory } = require('./mockData');
 
 let mainWindow = null;
@@ -9,18 +11,31 @@ let recordWindow = null;
 let vehicles = [];
 let records = [];
 
-const isDev = process.env.NODE_ENV === 'development';
+function detectMode() {
+  if (process.env.NODE_ENV === 'development') return true;
+  const distPath = path.join(__dirname, '..', 'dist');
+  if (fs.existsSync(distPath)) return false;
+  try {
+    if (process.defaultApp) return true;
+  } catch (e) {}
+  return false;
+}
+
+const isDev = detectMode();
 
 function getDevUrl(windowName) {
-  return `http://localhost:5173/src/windows/${windowName}/index.html`;
+  return `http://localhost:5173/${windowName}.html`;
 }
 
 function getProdUrl(windowName) {
-  return `file://${path.join(__dirname, '../dist', windowName, 'index.html')}`;
+  const filePath = path.join(__dirname, '..', 'dist', `${windowName}.html`);
+  return pathToFileURL(filePath).href;
 }
 
 function getWindowUrl(windowName) {
-  return isDev ? getDevUrl(windowName) : getProdUrl(windowName);
+  const url = isDev ? getDevUrl(windowName) : getProdUrl(windowName);
+  console.log(`[Electron] Loading ${windowName} window: ${url}`);
+  return url;
 }
 
 function createMainWindow() {
@@ -28,14 +43,20 @@ function createMainWindow() {
     width: 1280,
     height: 800,
     title: '到车队列 - 冷链月台调度系统',
+    backgroundColor: '#0f1419',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: false
     }
   });
 
   mainWindow.loadURL(getWindowUrl('queue'));
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error(`[Main Window] Failed to load: ${errorCode} - ${errorDescription}`);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -62,15 +83,21 @@ function createDetailWindow(vehicleId) {
     width: 960,
     height: 720,
     title: '车辆详情',
+    backgroundColor: '#0f1419',
     parent: mainWindow,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: false
     }
   });
 
   detailWindow.loadURL(getWindowUrl('detail'));
+
+  detailWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error(`[Detail Window] Failed to load: ${errorCode} - ${errorDescription}`);
+  });
 
   detailWindow.webContents.once('did-finish-load', () => {
     detailWindow.webContents.send('vehicle:selected', vehicleId);
@@ -92,16 +119,22 @@ function createRecordWindow(vehicleId) {
     width: 720,
     height: 800,
     title: '收货记录',
+    backgroundColor: '#0f1419',
     parent: mainWindow,
     modal: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: false
     }
   });
 
   recordWindow.loadURL(getWindowUrl('record'));
+
+  recordWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error(`[Record Window] Failed to load: ${errorCode} - ${errorDescription}`);
+  });
 
   recordWindow.webContents.once('did-finish-load', () => {
     recordWindow.webContents.send('record:init', vehicleId);
@@ -113,6 +146,7 @@ function createRecordWindow(vehicleId) {
 }
 
 app.whenReady().then(() => {
+  console.log(`[Electron] Mode: ${isDev ? 'Development' : 'Production'}`);
   vehicles = generateMockVehicles();
   createMainWindow();
 

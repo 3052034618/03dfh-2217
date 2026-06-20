@@ -3,8 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Legend
 } from 'recharts';
-
-const { vehicles: vehiclesAPI, window: windowAPI } = window.electronAPI;
+import { ensureBridge } from '../../mock/initBridge.js';
 
 const ACTION_ICONS = {
   dock: '🅿️',
@@ -76,6 +75,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const bridge = ensureBridge();
+    const { vehicles: vehiclesAPI } = bridge;
     const handleSelected = async (id) => {
       setLoading(true);
       const data = await vehiclesAPI.getById(id);
@@ -96,12 +97,12 @@ export default function App() {
   }, []);
 
   const handleClose = () => {
-    windowAPI.closeDetail();
+    ensureBridge().window.closeDetail();
   };
 
   const handleStartReceiving = () => {
     if (vehicle) {
-      windowAPI.openRecord(vehicle.id);
+      ensureBridge().window.openRecord(vehicle.id);
     }
   };
 

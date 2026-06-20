@@ -19,10 +19,10 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        main: fileURLToPath(new URL('./src/windows/queue/index.html', import.meta.url)),
-        queue: fileURLToPath(new URL('./src/windows/queue/index.html', import.meta.url)),
-        detail: fileURLToPath(new URL('./src/windows/detail/index.html', import.meta.url)),
-        record: fileURLToPath(new URL('./src/windows/record/index.html', import.meta.url))
+        index: fileURLToPath(new URL('./index.html', import.meta.url)),
+        queue: fileURLToPath(new URL('./queue.html', import.meta.url)),
+        detail: fileURLToPath(new URL('./detail.html', import.meta.url)),
+        record: fileURLToPath(new URL('./record.html', import.meta.url))
       }
     }
   }
