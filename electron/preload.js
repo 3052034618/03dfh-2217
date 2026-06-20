@@ -1,0 +1,35 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  vehicles: {
+    getAll: () => ipcRenderer.invoke('vehicles:getAll'),
+    getById: (id) => ipcRenderer.invoke('vehicles:getById', id),
+    sortByRisk: () => ipcRenderer.invoke('vehicles:sortByRisk'),
+    updateStatus: (id, status) => ipcRenderer.invoke('vehicles:updateStatus', id, status),
+    onUpdated: (callback) => {
+      ipcRenderer.on('vehicles:updated', (_, data) => callback(data));
+    },
+    onSelected: (callback) => {
+      ipcRenderer.on('vehicle:selected', (_, data) => callback(data));
+    },
+    onVehicleUpdated: (callback) => {
+      ipcRenderer.on('vehicle:updated', (_, data) => callback(data));
+    }
+  },
+  records: {
+    create: (record) => ipcRenderer.invoke('records:create', record),
+    getAll: () => ipcRenderer.invoke('records:getAll'),
+    onInit: (callback) => {
+      ipcRenderer.on('record:init', (_, data) => callback(data));
+    },
+    onCreated: (callback) => {
+      ipcRenderer.on('records:created', (_, data) => callback(data));
+    }
+  },
+  window: {
+    openDetail: (vehicleId) => ipcRenderer.send('window:openDetail', vehicleId),
+    openRecord: (vehicleId) => ipcRenderer.send('window:openRecord', vehicleId),
+    closeDetail: () => ipcRenderer.send('window:closeDetail'),
+    closeRecord: () => ipcRenderer.send('window:closeRecord')
+  }
+});
